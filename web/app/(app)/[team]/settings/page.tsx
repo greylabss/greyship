@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ChangePassword } from "@/components/team/change-password";
 import { NotificationSettings } from "@/components/team/notification-settings";
 import { RevokeToken } from "@/components/team/revoke-token";
 import { TokenDialog } from "@/components/team/token-dialog";
@@ -27,6 +28,16 @@ export default function SettingsPage({ params }: PageProps<"/[team]/settings">) 
           <SectionHeader title="Notifications" />
           <p className="text-13 text-muted">For deploys you start and projects you create.</p>
           <NotificationSettings />
+        </section>
+      )}
+
+      {liveMode && (
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="Password" />
+          <p className="text-13 text-muted">Optional. Without one you sign in with an email code.</p>
+          <DataSection what="password" fallback={<Skeleton className="h-24 w-full rounded-panel" />}>
+            <Password />
+          </DataSection>
         </section>
       )}
 
@@ -126,4 +137,9 @@ async function Tokens() {
             </tbody>
           </Table>
   );
+}
+
+async function Password() {
+  const me = await api.me();
+  return <ChangePassword hasPassword={me.hasPassword ?? false} />;
 }

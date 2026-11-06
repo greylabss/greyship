@@ -201,6 +201,102 @@ func TestFirstOwnerAndClosedSignup(t *testing.T) {
 	}
 }
 
+// Accounts an admin creates sign in with a password, with limits and a guard on the last admin.
+func TestAdminCreatedAccounts(t *testing.T) {
+	pool := testdb.New(t)
+	clk := &clock{t: time.Now()}
+	ctx := context.Background()
+	svc := auth.NewService(pool, &inbox{}, clk.now, auth.Signup{})
+
+	admin, err := svc.CreateUser(ctx, auth.NewUser{Email: "Boss@Example.com", Name: "Boss", Password: "a long enough password", Admin: true})
+	if err != nil || !admin.IsOwner || admin.Email != "boss@example.com" {
+		t.Fatalf("create admin = %+v, %v", admin, err)
+	}
+	beta, err := svc.CreateUser(ctx, auth.NewUser{Email: "beta@example.com", Name: "beta", Password: "greylabs-greylabs"})
+	if err != nil || beta.IsOwner {
+		t.Fatalf("create user = %+v, %v; want a non-admin", beta, err)
+	}
+	var plan string
+	_ = pool.QueryRow(ctx, "SELECT t.plan FROM teams t JOIN memberships m ON m.team_id = t.id WHERE m.user_id = $1", beta.ID).Scan(&plan)
+	if plan != "unlimited" {
+		t.Fatalf("a created user's plan = %q", plan)
+	}
+	if _, err := svc.CreateUser(ctx, auth.NewUser{Email: "beta@example.com"}); !errors.Is(err, auth.ErrUserExists) {
+		t.Fatalf("duplicate = %v", err)
+	}
+	if _, err := svc.CreateUser(ctx, auth.NewUser{Email: "x@example.com", Password: "short"}); !errors.Is(err, auth.ErrWeakPassword) {
+		t.Fatalf("weak password = %v", err)
+	}
+	if _, err := svc.CreateUser(ctx, auth.NewUser{Email: "not an email"}); !errors.Is(err, auth.ErrInvalidEmail) {
+		t.Fatalf("bad email = %v", err)
+	}
+	if _, err := svc.CreateUser(ctx, auth.NewUser{Email: "nopass@example.com"}); err != nil {
+		t.Fatalf("an account without a password: %v", err)
+	}
+
+	token, u, err := svc.LoginPassword(ctx, "BETA@example.com", "greylabs-greylabs", "10.0.0.1", "test")
+	if err != nil || token == "" || u.ID != beta.ID {
+		t.Fatalf("login = %q %+v, %v", token, u, err)
+	}
+	if got, err := svc.SessionUser(ctx, token); err != nil || got.ID != beta.ID {
+		t.Fatalf("session = %+v, %v", got, err)
+	}
+	for _, c := range []struct{ email, pw string }{{"beta@example.com", "wrong password here"}, {"ghost@example.com", "greylabs-greylabs"}, {"nopass@example.com", "greylabs-greylabs"}, {"beta@example.com", ""}} {
+		if _, _, err := svc.LoginPassword(ctx, c.email, c.pw, "10.0.0.2", "test"); !errors.Is(err, auth.ErrInvalidLogin) {
+			t.Fatalf("login %v = %v, want ErrInvalidLogin (same for every failure)", c, err)
+		}
+	}
+
+	// Too many failures lock the email for a while, even for the right password.
+	for i := 0; i < 8; i++ {
+		_, _, _ = svc.LoginPassword(ctx, "boss@example.com", "nope nope nope", "10.0.0.3", "test")
+	}
+	var rl *auth.RateLimitError
+	if _, _, err := svc.LoginPassword(ctx, "boss@example.com", "a long enough password", "10.0.0.4", "test"); !errors.As(err, &rl) {
+		t.Fatalf("after 8 failures = %v, want a rate limit", err)
+	}
+	clk.advance(20 * time.Minute)
+	if _, _, err := svc.LoginPassword(ctx, "boss@example.com", "a long enough password", "10.0.0.4", "test"); err != nil {
+		t.Fatalf("after the window: %v", err)
+	}
+
+	// Own password: the current one is required once there is one.
+	if err := svc.SetPassword(ctx, beta.ID, "not the current one", "another long password"); !errors.Is(err, auth.ErrWrongPassword) {
+		t.Fatalf("change with the wrong current = %v", err)
+	}
+	if err := svc.SetPassword(ctx, beta.ID, "greylabs-greylabs", "another long password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.LoginPassword(ctx, "beta@example.com", "another long password", "10.0.0.5", "test"); err != nil {
+		t.Fatalf("login with the new password: %v", err)
+	}
+	if err := svc.AdminSetPassword(ctx, beta.ID, "reset by the admin!"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := svc.LoginPassword(ctx, "beta@example.com", "reset by the admin!", "10.0.0.5", "test"); err != nil {
+		t.Fatalf("login after a reset: %v", err)
+	}
+	if err := svc.AdminSetPassword(ctx, "00000000-0000-4000-8000-000000000000", "a long enough password"); !errors.Is(err, auth.ErrNoUser) {
+		t.Fatalf("reset of nobody = %v", err)
+	}
+
+	// Roles, and the last admin stays.
+	if err := svc.SetAdmin(ctx, admin.ID, false); !errors.Is(err, auth.ErrLastAdmin) {
+		t.Fatalf("demoting the only admin = %v", err)
+	}
+	if err := svc.SetAdmin(ctx, beta.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetAdmin(ctx, admin.ID, false); err != nil {
+		t.Fatalf("demoting one of two admins: %v", err)
+	}
+	var admins int
+	_ = pool.QueryRow(ctx, "SELECT count(*) FROM users WHERE is_owner").Scan(&admins)
+	if admins != 1 {
+		t.Fatalf("admins = %d, want 1", admins)
+	}
+}
+
 type testers struct {
 	list map[string]bool
 	err  error

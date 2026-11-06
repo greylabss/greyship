@@ -25,6 +25,58 @@ func (q *Queries) AddMember(ctx context.Context, arg AddMemberParams) error {
 	return err
 }
 
+const clearPasswordFailures = `-- name: ClearPasswordFailures :exec
+DELETE FROM password_failures WHERE email = $1
+`
+
+func (q *Queries) ClearPasswordFailures(ctx context.Context, email string) error {
+	_, err := q.db.Exec(ctx, clearPasswordFailures, email)
+	return err
+}
+
+const countOwners = `-- name: CountOwners :one
+SELECT count(*) FROM users WHERE is_owner
+`
+
+func (q *Queries) CountOwners(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countOwners)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPasswordFailuresForEmail = `-- name: CountPasswordFailuresForEmail :one
+SELECT count(*) FROM password_failures WHERE email = $1 AND created_at > $2
+`
+
+type CountPasswordFailuresForEmailParams struct {
+	Email     string
+	CreatedAt time.Time
+}
+
+func (q *Queries) CountPasswordFailuresForEmail(ctx context.Context, arg CountPasswordFailuresForEmailParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPasswordFailuresForEmail, arg.Email, arg.CreatedAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPasswordFailuresForIP = `-- name: CountPasswordFailuresForIP :one
+SELECT count(*) FROM password_failures WHERE ip = $1 AND created_at > $2
+`
+
+type CountPasswordFailuresForIPParams struct {
+	Ip        string
+	CreatedAt time.Time
+}
+
+func (q *Queries) CountPasswordFailuresForIP(ctx context.Context, arg CountPasswordFailuresForIPParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPasswordFailuresForIP, arg.Ip, arg.CreatedAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createIdentity = `-- name: CreateIdentity :exec
 INSERT INTO oauth_identities (provider, subject, user_id, email) VALUES ($1, $2, $3, $4)
 `
@@ -72,7 +124,7 @@ func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, e
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, name, avatar_url) VALUES ($1, $2, $3) RETURNING id, email, name, avatar_url, created_at, beta_tester, is_owner
+INSERT INTO users (email, name, avatar_url) VALUES ($1, $2, $3) RETURNING id, email, name, avatar_url, created_at, beta_tester, is_owner, password_hash
 `
 
 type CreateUserParams struct {
@@ -92,6 +144,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.BetaTester,
 		&i.IsOwner,
+		&i.PasswordHash,
 	)
 	return i, err
 }
@@ -137,7 +190,7 @@ func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (Oauth
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, avatar_url, created_at, beta_tester, is_owner FROM users WHERE email = $1
+SELECT id, email, name, avatar_url, created_at, beta_tester, is_owner, password_hash FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -151,12 +204,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CreatedAt,
 		&i.BetaTester,
 		&i.IsOwner,
+		&i.PasswordHash,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, avatar_url, created_at, beta_tester, is_owner FROM users WHERE id = $1
+SELECT id, email, name, avatar_url, created_at, beta_tester, is_owner, password_hash FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -170,6 +224,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.CreatedAt,
 		&i.BetaTester,
 		&i.IsOwner,
+		&i.PasswordHash,
 	)
 	return i, err
 }
@@ -246,6 +301,48 @@ UPDATE users SET beta_tester = true WHERE id = $1
 
 func (q *Queries) MarkBetaTester(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, markBetaTester, id)
+	return err
+}
+
+const recordPasswordFailure = `-- name: RecordPasswordFailure :exec
+INSERT INTO password_failures (email, ip) VALUES ($1, $2)
+`
+
+type RecordPasswordFailureParams struct {
+	Email string
+	Ip    string
+}
+
+func (q *Queries) RecordPasswordFailure(ctx context.Context, arg RecordPasswordFailureParams) error {
+	_, err := q.db.Exec(ctx, recordPasswordFailure, arg.Email, arg.Ip)
+	return err
+}
+
+const setOwner = `-- name: SetOwner :exec
+UPDATE users SET is_owner = $2 WHERE id = $1
+`
+
+type SetOwnerParams struct {
+	ID      string
+	IsOwner bool
+}
+
+func (q *Queries) SetOwner(ctx context.Context, arg SetOwnerParams) error {
+	_, err := q.db.Exec(ctx, setOwner, arg.ID, arg.IsOwner)
+	return err
+}
+
+const setPasswordHash = `-- name: SetPasswordHash :exec
+UPDATE users SET password_hash = $2 WHERE id = $1
+`
+
+type SetPasswordHashParams struct {
+	ID           string
+	PasswordHash string
+}
+
+func (q *Queries) SetPasswordHash(ctx context.Context, arg SetPasswordHashParams) error {
+	_, err := q.db.Exec(ctx, setPasswordHash, arg.ID, arg.PasswordHash)
 	return err
 }
 

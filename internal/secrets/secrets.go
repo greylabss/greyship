@@ -66,6 +66,17 @@ func (k *Keyring) ProjectKey(projectID string, wrapped []byte) (*ProjectKey, err
 	return &ProjectKey{projectID: projectID, aead: aead}, nil
 }
 
+// Seal encrypts an instance-level secret (such as the email provider's API key) with the master key. The label
+// binds the ciphertext to its purpose, so it can't be swapped for another secret.
+func (k *Keyring) Seal(label string, plaintext []byte) ([]byte, error) {
+	return seal(k.master, plaintext, []byte("instance:"+label))
+}
+
+// Open decrypts what Seal produced for the same label.
+func (k *Keyring) Open(label string, sealed []byte) ([]byte, error) {
+	return open(k.master, sealed, []byte("instance:"+label))
+}
+
 // ProjectKey encrypts and decrypts one project's values.
 type ProjectKey struct {
 	projectID string

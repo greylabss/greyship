@@ -73,11 +73,19 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 
-	var sender mail.Sender = &mail.Outbox{Dir: cfg.OutboxDir, Now: time.Now}
+	keyring, err := secrets.NewKeyring(cfg.MasterKey)
+	if err != nil {
+		return err
+	}
+	// Email settings saved in the dashboard replace GREYSHIP_RESEND_API_KEY (decisions.md 052).
+	sender := &mail.Dynamic{
+		Pool: pool, Keys: keyring, Outbox: &mail.Outbox{Dir: cfg.OutboxDir, Now: time.Now},
+		Dev: cfg.Dev, Now: time.Now, Logger: logger,
+	}
 	if cfg.ResendAPIKey != "" {
-		sender = mail.NewResend(cfg.ResendAPIKey, cfg.MailFrom)
+		sender.Env = mail.NewResend(cfg.ResendAPIKey, cfg.MailFrom)
 	} else {
-		logger.Info("no GREYSHIP_RESEND_API_KEY: login codes are written to files in the outbox folder, readable by the server's owner", "dir", cfg.OutboxDir)
+		logger.Info("no email provider set: turn email on in the dashboard (Admin > Email); until then login codes are written to files in the outbox folder, readable by the server's owner", "dir", cfg.OutboxDir)
 	}
 
 	// Mail is sent in the background so login requests never wait on the provider.
@@ -103,10 +111,6 @@ func run(logger *slog.Logger) error {
 	}
 
 	projects := project.NewService(pool)
-	keyring, err := secrets.NewKeyring(cfg.MasterKey)
-	if err != nil {
-		return err
-	}
 	storage := &objstore.Store{
 		Endpoint: cfg.Storage.Endpoint, Region: cfg.Storage.Region, Bucket: cfg.Storage.Bucket,
 		AccessKey: cfg.Storage.AccessKey, SecretKey: cfg.Storage.SecretKey,
@@ -150,13 +154,7 @@ func run(logger *slog.Logger) error {
 		}
 		pusher, inbox.PushKey = wp, wp.PublicKey()
 	}
-	// Without an email provider only development keeps notification emails (as files); a production instance
-	// would pile them up unread. The bell and browser push still work.
-	var notifyMail mail.Sender
-	if cfg.ResendAPIKey != "" || cfg.Dev {
-		notifyMail = sender
-	}
-	notifier := &notify.Notifier{Pool: pool, Mail: notifyMail, From: cfg.NotifyFrom, Push: pusher, DashboardURL: cfg.DashboardURL, Logger: logger}
+	notifier := &notify.Notifier{Pool: pool, Mail: sender, From: cfg.NotifyFrom, Push: pusher, DashboardURL: cfg.DashboardURL, Logger: logger}
 	notifyWorker := &bus.Worker{
 		Queue: bus.NewQueue(pool), Pool: pool, ID: bus.WorkerID(), Kind: bus.Notify,
 		Lease: time.Minute, Poll: 5 * time.Second, Logger: logger,
@@ -172,8 +170,11 @@ func run(logger *slog.Logger) error {
 		<-workerDone
 	}()
 
+	authService := auth.NewService(pool, mailer, time.Now, signup)
 	handler := api.New(api.Options{
-		Auth:          auth.NewService(pool, mailer, time.Now, signup),
+		Auth:          authService,
+		Accounts:      authService,
+		Mail:          sender,
 		Projects:      projects,
 		Deployments:   deploy.NewService(pool, projects, storage, logger, time.Now),
 		Env:           env.NewService(pool, keyring, projects),
@@ -190,7 +191,8 @@ func run(logger *slog.Logger) error {
 		AppsPort:      cfg.AppsPort,
 		BuildGOARCH:   cfg.BuildGOARCH,
 		ProxySecret:   cfg.ProxySecret,
-		SecureCookie:  !cfg.Dev,
+		SecureCookie:  !cfg.Dev && !cfg.HTTPOnly,
+		HTTPOnly:      cfg.HTTPOnly,
 		Logger:        logger,
 	})
 

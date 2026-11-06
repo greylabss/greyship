@@ -87,6 +87,9 @@ func loginCmd(a *App, asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if unencrypted(s.api.base) {
+				fmt.Fprintln(a.Err, "warning: this connection isn't encrypted (http), so your login token can be read on the network. Add a domain on the server to get HTTPS: greyship-admin domain")
+			}
 			s.cfg.Token, s.cfg.Email, s.cfg.APIURL = token, me.Email, s.api.base
 			if s.cfg.APIURL == DefaultAPIURL {
 				s.cfg.APIURL = ""

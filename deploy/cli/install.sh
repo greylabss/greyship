@@ -8,6 +8,8 @@
 # ~/.local/bin when /usr/local/bin isn't writable. It never uses sudo.
 #
 # GREY_VERSION=v0.1.0 picks a release; GREY_INSTALL_DIR picks the folder; GREY_REPO another repository.
+# GREY_SERVER=https://greyship.example.com points grey at a self-hosted Greyship (every Greyship serves this same
+# script at /install and prints the command with its own address).
 set -eu
 
 # Everything runs from main, so a download cut off halfway never runs half a script.
@@ -74,7 +76,12 @@ main() {
       ;;
   esac
   say ""
-  say "Next: grey login, then grey deploy in your Go project."
+  if [ -n "${GREY_SERVER:-}" ]; then
+    "$dir/grey" server "$GREY_SERVER"
+    say "Then grey deploy in your Go project."
+  else
+    say "Next: grey login, then grey deploy in your Go project."
+  fi
 }
 
 sha256() {

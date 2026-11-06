@@ -288,3 +288,21 @@ func TestProjectLogs(t *testing.T) {
 		t.Fatalf("tail=5000 = %d, want 400", rec.Code)
 	}
 }
+
+func TestAppURLScheme(t *testing.T) {
+	tests := []struct {
+		name string
+		s    Server
+		want string
+	}{
+		{"https", Server{Options: Options{AppsDomain: "greyshipapp.tech"}}, "https://api-shop.greyshipapp.tech"},
+		{"https on another port", Server{Options: Options{AppsDomain: "localhost", AppsPort: "8443"}}, "https://api-shop.localhost:8443"},
+		{"http only (a fresh install)", Server{Options: Options{AppsDomain: "apps-1-2-3-4.sslip.io", HTTPOnly: true}}, "http://api-shop.apps-1-2-3-4.sslip.io"},
+		{"http only on port 80", Server{Options: Options{AppsDomain: "apps-1-2-3-4.sslip.io", AppsPort: "80", HTTPOnly: true}}, "http://api-shop.apps-1-2-3-4.sslip.io"},
+	}
+	for _, tt := range tests {
+		if got := tt.s.appURL("api-shop"); got != tt.want {
+			t.Errorf("%s: appURL = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}

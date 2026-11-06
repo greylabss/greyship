@@ -101,10 +101,14 @@ func (s *Server) listServices(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) appURL(label string) string {
 	host := label + "." + s.AppsDomain
-	if s.AppsPort != "" && s.AppsPort != "443" {
+	scheme, std := "https", "443"
+	if s.HTTPOnly {
+		scheme, std = "http", "80"
+	}
+	if s.AppsPort != "" && s.AppsPort != std {
 		host += ":" + s.AppsPort
 	}
-	return "https://" + host
+	return scheme + "://" + host
 }
 
 func (s *Server) urls(r *http.Request, id string) ([]urlJSON, error) {

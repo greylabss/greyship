@@ -106,6 +106,12 @@ The receptionist counts how many visitors each robot is handling. When one robot
 
 ## The tricky words, explained simply
 
+### Who gets a key? (accounts and passwords)
+Think of Greyship as a building. The first person to move in is the **owner** and holds the master key (an **admin**). Everyone else needs the owner to let them in. The owner can cut a new key for someone, a name and a secret password, and say whether it is a master key or a normal one. We never keep the password itself, only a scrambled fingerprint of it, so even someone who steals our notes can't read it. If someone guesses wrong too many times in a row, the door stays shut for a few minutes. At least one master key always exists.
+
+### How does Greyship send email?
+Greyship doesn't run its own post office. It hires one called Resend. The owner gives Greyship the Resend key (like a membership card) and the street address it should send from (the domain) on the Email page. Greyship locks the card in a safe (encrypted) and takes it out only when it needs to post a letter. With no card, no letters go out; sign-in codes are left in a drawer on the server instead.
+
 ### What's a "kernel"?
 Every building has a **building boss** who controls the electricity, water, doors and elevators. Robots can't touch those directly — they have to ask the boss. In a computer, that boss is the **kernel**: it controls CPU, memory, files and network.
 

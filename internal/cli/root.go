@@ -116,7 +116,7 @@ func NewRoot(a *App) *cobra.Command {
 	root.PersistentFlags().BoolVar(&asJSON, "json", false, "print machine-readable JSON")
 	root.SetOut(a.Out)
 	root.SetErr(a.Err)
-	root.AddCommand(loginCmd(a, &asJSON), logoutCmd(a, &asJSON), whoamiCmd(a, &asJSON), initCmd(a, &asJSON), projectsCmd(a, &asJSON), deployCmd(a, &asJSON), envCmd(a, &asJSON), logsCmd(a, &asJSON), githubCmd(a, &asJSON), rollbackCmd(a, &asJSON), redeployCmd(a, &asJSON), notificationsCmd(a, &asJSON))
+	root.AddCommand(loginCmd(a, &asJSON), logoutCmd(a, &asJSON), whoamiCmd(a, &asJSON), initCmd(a, &asJSON), projectsCmd(a, &asJSON), deployCmd(a, &asJSON), envCmd(a, &asJSON), logsCmd(a, &asJSON), githubCmd(a, &asJSON), rollbackCmd(a, &asJSON), redeployCmd(a, &asJSON), notificationsCmd(a, &asJSON), serverCmd(a, &asJSON))
 	return root
 }
 

@@ -543,7 +543,7 @@ func (q *Queries) AdminNodes(ctx context.Context) ([]AdminNodesRow, error) {
 }
 
 const adminUsers = `-- name: AdminUsers :many
-SELECT u.id, u.email::text AS email, u.created_at,
+SELECT u.id, u.email::text AS email, u.name, u.is_owner, (u.password_hash <> '')::bool AS has_password, u.beta_tester, u.created_at,
        coalesce(string_agg(DISTINCT t.slug, ', '), '')::text AS teams,
        (SELECT count(*) FROM projects p JOIN memberships m2 ON m2.team_id = p.team_id WHERE m2.user_id = u.id)::bigint AS projects,
        ld.last_deploy
@@ -555,12 +555,16 @@ GROUP BY u.id, ld.last_deploy ORDER BY u.created_at DESC LIMIT $1
 `
 
 type AdminUsersRow struct {
-	ID         string
-	Email      string
-	CreatedAt  time.Time
-	Teams      string
-	Projects   int64
-	LastDeploy interface{}
+	ID          string
+	Email       string
+	Name        string
+	IsOwner     bool
+	HasPassword bool
+	BetaTester  bool
+	CreatedAt   time.Time
+	Teams       string
+	Projects    int64
+	LastDeploy  interface{}
 }
 
 func (q *Queries) AdminUsers(ctx context.Context, limit int32) ([]AdminUsersRow, error) {
@@ -575,6 +579,10 @@ func (q *Queries) AdminUsers(ctx context.Context, limit int32) ([]AdminUsersRow,
 		if err := rows.Scan(
 			&i.ID,
 			&i.Email,
+			&i.Name,
+			&i.IsOwner,
+			&i.HasPassword,
+			&i.BetaTester,
 			&i.CreatedAt,
 			&i.Teams,
 			&i.Projects,

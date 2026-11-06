@@ -158,11 +158,12 @@ func TestRevokedTokenMessage(t *testing.T) {
 
 func TestNormalizeServer(t *testing.T) {
 	good := map[string]string{
-		"greyship.example.com":          "https://greyship.example.com",
-		"https://greyship.example.com/": "https://greyship.example.com",
-		" HTTPS://x.test ":              "https://x.test",
-		"http://localhost:3000":         "http://localhost:3000",
-		"1-2-3-4.sslip.io":              "https://1-2-3-4.sslip.io",
+		"greyship.example.com":              "https://greyship.example.com",
+		"https://greyship.example.com/":     "https://greyship.example.com",
+		" HTTPS://x.test ":                  "https://x.test",
+		"http://localhost:3000":             "http://localhost:3000",
+		"http://greyship-1-2-3-4.sslip.io/": "http://greyship-1-2-3-4.sslip.io",
+		"1-2-3-4.sslip.io":                  "https://1-2-3-4.sslip.io",
 	}
 	for in, want := range good {
 		got, err := normalizeServer(in)
@@ -170,7 +171,7 @@ func TestNormalizeServer(t *testing.T) {
 			t.Errorf("normalizeServer(%q) = %q, %v; want %q", in, got, err, want)
 		}
 	}
-	for _, bad := range []string{"", "http://greyship.example.com", "https://x.test/path", "https://user@x.test", "https://x.test?a=1", "ftp://x.test"} {
+	for _, bad := range []string{"", "https://x.test/path", "https://user@x.test", "https://x.test?a=1", "ftp://x.test"} {
 		if _, err := normalizeServer(bad); err == nil {
 			t.Errorf("normalizeServer(%q) accepted it", bad)
 		}
@@ -196,7 +197,37 @@ func TestLoginToAnotherServer(t *testing.T) {
 	if out, err := run(t, f, map[string]string{}, path, "whoami"); err != nil || !strings.Contains(out, "a@b.co on "+srv.URL) {
 		t.Fatalf("whoami: %v\n%s", err, out)
 	}
-	if _, err := run(t, f, map[string]string{}, path, "login", "http://greyship.example.com"); err == nil {
-		t.Fatal("plain http to a remote server was accepted")
+	if unencrypted(srv.URL) || !unencrypted("http://greyship-1-2-3-4.sslip.io") || unencrypted("https://greyship.example.com") {
+		t.Fatal("only http to a remote host counts as unencrypted")
+	}
+}
+
+func TestServerCommand(t *testing.T) {
+	f := &fakeAPI{}
+	path := filepath.Join(t.TempDir(), "config.json")
+	out, err := run(t, f, map[string]string{}, path, "server")
+	if err != nil || !strings.Contains(out, DefaultAPIURL+" (not logged in)") {
+		t.Fatalf("show: %v\n%s", err, out)
+	}
+	if err := saveConfig(path, Config{Token: "t", Email: "a@b.co"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err = run(t, f, map[string]string{}, path, "server", "http://203.0.113.7:8000/")
+	if err != nil || !strings.Contains(out, "grey now uses http://203.0.113.7:8000. Next: grey login") || !strings.Contains(out, "isn't using HTTPS") {
+		t.Fatalf("set: %v\n%s", err, out)
+	}
+	cfg, _ := loadConfig(path)
+	if cfg.APIURL != "http://203.0.113.7:8000" || cfg.Token != "" {
+		t.Fatalf("config = %+v; switching servers must drop the old token", cfg)
+	}
+	out, err = run(t, f, map[string]string{}, path, "server", "greyship.example.com")
+	if err != nil || strings.Contains(out, "isn't using HTTPS") {
+		t.Fatalf("https server: %v\n%s", err, out)
+	}
+	if _, err = run(t, f, map[string]string{}, path, "server", DefaultAPIURL); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, _ = loadConfig(path); cfg.APIURL != "" {
+		t.Fatalf("the default server is stored as empty, got %q", cfg.APIURL)
 	}
 }

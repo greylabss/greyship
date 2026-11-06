@@ -107,6 +107,21 @@ GREYSHIP_SIGNUP_OPEN=true
 
 then `systemctl restart greyship-api`. Everyone gets their own team and their own projects.
 
+### Adding people yourself
+
+Open **Admin → Users → Add user** in the dashboard. Give an email, a name and a password (or press Generate), and tick **Admin** if they should manage the instance too. They sign in with that password and can change it in **Settings**. Leave the password empty and they sign in with an emailed code instead. Use **Reset password** if someone forgets theirs. There is always at least one admin.
+
+## Turning on email
+
+Email is optional. It sends sign-in codes and deploy notifications. You turn it on in the dashboard, no config file needed:
+
+1. Create a [Resend](https://resend.com) account, add your domain there and verify it.
+2. Create an API key in Resend.
+3. In Greyship open **Admin → Email**, paste the key, enter the domain (for example `mail.example.com`), tick **Send email**, and press **Save**.
+4. Press **Send test email**. It goes to your own address and shows Resend's error if something is wrong (usually an unverified domain).
+
+The key is stored encrypted and is never shown again. Mail comes from `login@` and `notifications@` your domain. Without email you can still sign in with Google, GitHub or a password you set for people (see above); deploy notifications still appear in the bell and as browser notifications.
+
 ## Keeping it running
 
 ```sh

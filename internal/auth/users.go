@@ -60,9 +60,9 @@ func findOrCreateUser(ctx context.Context, q *store.Queries, signup Signup, emai
 		tester = t
 	}
 
-	user, err = q.CreateUser(ctx, store.CreateUserParams{Email: email, Name: name, AvatarUrl: avatarURL})
+	user, err = createAccount(ctx, q, signup.PlansOn, email, name, avatarURL)
 	if err != nil {
-		return store.User{}, fmt.Errorf("create user: %w", err)
+		return store.User{}, err
 	}
 	if tester {
 		if err := q.MarkBetaTester(ctx, user.ID); err != nil {
@@ -82,11 +82,20 @@ func findOrCreateUser(ctx context.Context, q *store.Queries, signup Signup, emai
 		}
 		user.IsOwner = made
 	}
+	return user, nil
+}
+
+// createAccount makes a user with a personal team they own.
+func createAccount(ctx context.Context, q *store.Queries, plansOn bool, email, name, avatarURL string) (store.User, error) {
+	user, err := q.CreateUser(ctx, store.CreateUserParams{Email: email, Name: name, AvatarUrl: avatarURL})
+	if err != nil {
+		return store.User{}, fmt.Errorf("create user: %w", err)
+	}
 	slug, err := freeSlug(ctx, q, slugFrom(email))
 	if err != nil {
 		return store.User{}, err
 	}
-	team, err := q.CreateTeam(ctx, store.CreateTeamParams{Slug: slug, Name: slug, Plan: plan.Default(signup.PlansOn)})
+	team, err := q.CreateTeam(ctx, store.CreateTeamParams{Slug: slug, Name: slug, Plan: plan.Default(plansOn)})
 	if err != nil {
 		return store.User{}, fmt.Errorf("create personal team: %w", err)
 	}

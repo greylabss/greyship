@@ -4,7 +4,7 @@ import { AuthShell, Divider } from "@/components/auth/auth-shell";
 import { SignInError } from "@/components/auth/signin-error";
 import { SocialButtons } from "@/components/auth/social-buttons";
 import { Suspense } from "react";
-import { EmailCodeForm } from "@/components/auth/email-code-form";
+import { SignInMethods } from "@/components/auth/sign-in-methods";
 import { CommandHint } from "@/components/ui/command-hint";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -32,7 +32,7 @@ export default function SignInPage() {
         <SocialButtons to="/continue" verb="Continue" />
         <Divider />
         <Suspense>
-          <EmailCodeForm fallbackNext="/continue" />
+          <SignInMethods fallbackNext="/continue" />
         </Suspense>
         <div className="flex flex-col items-center gap-1 text-13 text-muted">
           Signing in from the terminal?

@@ -5,17 +5,21 @@
 #   curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh
 #
 # It installs Docker, gVisor, Postgres, storage and Node, downloads the release, writes every secret into
-# /etc/greyship (root-only), sets Greyship up as systemd services, and prints the DNS records to add. Running it again
-# upgrades in place and keeps /etc/greyship.
+# /etc/greyship (root-only), and sets Greyship up as systemd services. Running it again upgrades in place and keeps
+# /etc/greyship.
 #
-# Questions can be answered up front instead (for scripts):
-#   --domain greyship.example.com   where the dashboard lives (needs a DNS record)
-#   --apps-domain example.net       where apps live (needs a wildcard record); better a different domain than the dashboard's
-#   --email you@example.com         owner account, and the address Let's Encrypt writes to
-#   --sslip                         no domain: use free sslip.io names built from this server's IP (for trying it out:
-#                                   all of sslip.io is one site to browsers, and Let's Encrypt's limits are shared)
+# No domain is needed. Like Coolify, a fresh install is a dashboard at http://<this server's IP>:8000, and apps get
+# free sslip.io addresses (<name>.apps-<ip>.sslip.io), all over plain HTTP: nothing is encrypted yet. When you have a
+# domain, run `greyship-admin domain` to switch everything to your domains with HTTPS.
+#
+# Options (all optional):
+#   --email you@example.com         the owner account: only this email can create the first account (else the first
+#                                   person to open the dashboard becomes the owner)
+#   --domain greyship.example.com   install with HTTPS on your own domains right away (needs DNS records, see the end)
+#   --apps-domain example.net       where apps live with --domain (wildcard record); a different domain than the
+#                                   dashboard's is better
 #   --version v0.1.0                a release other than the latest
-#   --yes                           don't ask; fail if something is missing
+#   --yes                           don't ask anything
 set -eu
 
 REPO=${GREYSHIP_REPO:-greylabss/greyship}
@@ -33,8 +37,11 @@ fail() {
 PLATFORM_DOMAIN=${GREYSHIP_DOMAIN:-}
 APPS_DOMAIN=${GREYSHIP_APPS_DOMAIN:-}
 OWNER_EMAIL=${GREYSHIP_OWNER_EMAIL:-}
-SSLIP=0
 YES=0
+SERVER_IP=
+DASH_URL=
+DASH_PORT=3000
+DASH_HOST=127.0.0.1
 
 parse_args() {
 	while [ $# -gt 0 ]; do
@@ -43,7 +50,6 @@ parse_args() {
 			--apps-domain) APPS_DOMAIN=${2:?--apps-domain needs a value}; shift ;;
 			--email) OWNER_EMAIL=${2:?--email needs a value}; shift ;;
 			--version) VERSION=${2:?--version needs a value}; shift ;;
-			--sslip) SSLIP=1 ;;
 			--yes | -y) YES=1 ;;
 			*) fail "unknown option $1 (see the top of this script)" ;;
 		esac
@@ -118,27 +124,44 @@ choose_domains() {
 		PLATFORM_DOMAIN=$(sed -n 's/^GREYSHIP_PLATFORM_DOMAIN=//p' "$ETC/greyship.env")
 		APPS_DOMAIN=$(sed -n 's/^GREYSHIP_APPS_DOMAIN=//p' "$ETC/greyship.env")
 		OWNER_EMAIL=$(sed -n 's/^GREYSHIP_OWNER_EMAIL=//p' "$ETC/greyship.env")
+		DASH_URL=$(sed -n 's/^GREYSHIP_DASHBOARD_URL=//p' "$ETC/greyship.env")
+		DASH_PORT=$(sed -n 's/^PORT=//p' "$ETC/dashboard.env")
+		if grep -q '^GREYSHIP_HTTP_ONLY=true' "$ETC/greyship.env"; then SCHEME=http; DASH_HOST=0.0.0.0; else SCHEME=https; fi
 		return 0
 	fi
-	if [ "$SSLIP" = 1 ]; then
-		ip=$(public_ip) || fail "couldn't find this server's public IP address; use --domain instead"
-		dashed=$(printf '%s' "$ip" | tr . -)
-		PLATFORM_DOMAIN=${PLATFORM_DOMAIN:-greyship-$dashed.sslip.io}
-		APPS_DOMAIN=${APPS_DOMAIN:-apps-$dashed.sslip.io}
-		say "Using sslip.io names for $ip: $PLATFORM_DOMAIN and *.$APPS_DOMAIN (fine for trying Greyship out; use your own domains for real use)"
+	if [ -n "$PLATFORM_DOMAIN" ] || [ -n "$APPS_DOMAIN" ]; then
+		# HTTPS on the person's own domains.
+		SCHEME=https
+		DASH_URL=https://$PLATFORM_DOMAIN
+		[ -n "$PLATFORM_DOMAIN" ] || fail "--apps-domain needs --domain too"
+		[ -n "$APPS_DOMAIN" ] || fail "--domain needs --apps-domain too (apps get <name>.<apps domain>)"
+		[ "$PLATFORM_DOMAIN" != "$APPS_DOMAIN" ] || fail "the dashboard and the apps need different domains"
+		case "$PLATFORM_DOMAIN$APPS_DOMAIN" in
+			*[!A-Za-z0-9.-]*) fail "domains may only contain letters, digits, dots and dashes" ;;
+		esac
+		ask OWNER_EMAIL "Your email (the owner account, and Let's Encrypt's contact)"
+	else
+		# No domain: the dashboard answers on this server's IP and port 8000; apps and storage get sslip.io names. HTTP.
+		SCHEME=http
+		SERVER_IP=$(public_ip) || fail "couldn't find this server's public IP address; pass --domain and --apps-domain instead"
+		dashed=$(printf '%s' "$SERVER_IP" | tr . -)
+		PLATFORM_DOMAIN=greyship-$dashed.sslip.io
+		APPS_DOMAIN=apps-$dashed.sslip.io
+		DASH_PORT=8000
+		DASH_HOST=0.0.0.0
+		DASH_URL=http://$SERVER_IP:8000
+		if [ -z "$OWNER_EMAIL" ] && [ "$YES" = 0 ] && (: </dev/tty) 2>/dev/null; then
+			printf "Your email, so only you can create the owner account (Enter to skip): " >/dev/tty
+			read -r OWNER_EMAIL </dev/tty || OWNER_EMAIL=
+		fi
 	fi
-	ask PLATFORM_DOMAIN "Domain for the dashboard (e.g. greyship.example.com)"
-	ask APPS_DOMAIN "Domain for your apps (e.g. example.net; apps get <name>.<this domain>)"
-	ask OWNER_EMAIL "Your email (the owner account, and Let's Encrypt's contact)"
-	[ "$PLATFORM_DOMAIN" != "$APPS_DOMAIN" ] || fail "the dashboard and the apps need different domains (apps would otherwise share a name space with the dashboard)"
-	case "$PLATFORM_DOMAIN$APPS_DOMAIN" in
-		*[!A-Za-z0-9.-]*) fail "domains may only contain letters, digits, dots and dashes" ;;
-	esac
-	case "$OWNER_EMAIL" in
-		*@*.*) ;;
-		*) fail "that doesn't look like an email address: $OWNER_EMAIL" ;;
-	esac
-	OWNER_EMAIL=$(printf '%s' "$OWNER_EMAIL" | tr '[:upper:]' '[:lower:]')
+	if [ -n "$OWNER_EMAIL" ]; then
+		case "$OWNER_EMAIL" in
+			*@*.*) ;;
+			*) fail "that doesn't look like an email address: $OWNER_EMAIL" ;;
+		esac
+		OWNER_EMAIL=$(printf '%s' "$OWNER_EMAIL" | tr '[:upper:]' '[:lower:]')
+	fi
 }
 
 install_docker() {
@@ -251,6 +274,14 @@ write_config() {
 	key_secret=$(hex 32)
 	proxy=$(hex 32)
 	node_mb=$((mem_mb * 55 / 100))
+	owner_line="# GREYSHIP_OWNER_EMAIL="
+	[ -z "$OWNER_EMAIL" ] || owner_line="GREYSHIP_OWNER_EMAIL=$OWNER_EMAIL"
+	http_line="# GREYSHIP_HTTP_ONLY=true"
+	acme_line="GREYSHIP_ACME_EMAIL=$OWNER_EMAIL"
+	if [ "$SCHEME" = http ]; then
+		http_line="GREYSHIP_HTTP_ONLY=true"
+		acme_line="# GREYSHIP_ACME_EMAIL=you@example.com  (needed once you add a domain)"
+	fi
 	cat >"$ETC/infra.env" <<ENV
 POSTGRES_PASSWORD=$pg
 GARAGE_KEY_ID=$key_id
@@ -278,26 +309,30 @@ TOML
 GREYSHIP_ENV=production
 GREYSHIP_DATABASE_URL=postgres://greyship:$pg@127.0.0.1:5432/greyship?sslmode=disable
 GREYSHIP_API_ADDR=127.0.0.1:8080
-GREYSHIP_DASHBOARD_URL=https://$PLATFORM_DOMAIN
+GREYSHIP_DASHBOARD_URL=$DASH_URL
 GREYSHIP_PLATFORM_DOMAIN=$PLATFORM_DOMAIN
 GREYSHIP_APPS_DOMAIN=$APPS_DOMAIN
 GREYSHIP_COOKIE_SECRET=$(hex 32)
 GREYSHIP_MASTER_KEY=$(hex 32)
 GREYSHIP_PROXY_SECRET=$proxy
 GREYSHIP_VAPID_PRIVATE_KEY=$("$DL/server/greyship-api" vapid-key)
-# The owner account. While no account exists, only this email may sign up; after that signup is closed.
-# To let anyone sign up add GREYSHIP_SIGNUP_OPEN=true, or list emails in GREYSHIP_SIGNUP_ALLOWLIST.
-GREYSHIP_OWNER_EMAIL=$OWNER_EMAIL
+# The owner is the first account (or GREYSHIP_OWNER_EMAIL, when set: then only that email can create the first
+# account). After that signup is closed. To let anyone sign up add GREYSHIP_SIGNUP_OPEN=true, or list emails in
+# GREYSHIP_SIGNUP_ALLOWLIST.
+$owner_line
+# No domain yet: plain HTTP. Run greyship-admin domain to switch to HTTPS (this line is removed then).
+$http_line
 # Email: optional. Without a provider, login codes are saved as files (run: greyship-admin codes).
+# Email is easier to set up in the dashboard (Admin > Email); these two apply only until you save settings there.
 # GREYSHIP_RESEND_API_KEY=
 # GREYSHIP_MAIL_FROM=Greyship <login@$PLATFORM_DOMAIN>
-GREYSHIP_S3_ENDPOINT=https://s3.$PLATFORM_DOMAIN
+GREYSHIP_S3_ENDPOINT=$SCHEME://s3.$PLATFORM_DOMAIN
 GREYSHIP_S3_REGION=garage
 GREYSHIP_S3_BUCKET=greyship
 GREYSHIP_S3_ACCESS_KEY=$key_id
 GREYSHIP_S3_SECRET_KEY=$key_secret
-GREYSHIP_ACME_EMAIL=$OWNER_EMAIL
-GREYSHIP_ROUTER_PLATFORM=@=127.0.0.1:3000,api=127.0.0.1:8080,s3=127.0.0.1:3900
+$acme_line
+GREYSHIP_ROUTER_PLATFORM=@=127.0.0.1:$DASH_PORT,api=127.0.0.1:8080,s3=127.0.0.1:3900
 GREYSHIP_ROUTER_CERT_DIR=/var/lib/greyship/certs
 GREYSHIP_BUILD_DOCKER_HOST=unix:///var/run/docker.sock
 GREYSHIP_BUILD_GOARCH=$ARCH
@@ -311,8 +346,8 @@ GREYSHIP_NODE_MEMORY_MB=$node_mb
 ENV
 	cat >"$ETC/dashboard.env" <<ENV
 NODE_ENV=production
-PORT=3000
-HOSTNAME=127.0.0.1
+PORT=$DASH_PORT
+HOSTNAME=$DASH_HOST
 GREYSHIP_API_URL=http://127.0.0.1:8080
 GREYSHIP_PROXY_SECRET=$proxy
 ENV
@@ -352,6 +387,8 @@ firewall() {
 		ufw allow OpenSSH >/dev/null
 		ufw allow 80/tcp >/dev/null
 		ufw allow 443/tcp >/dev/null
+		# Without a domain the dashboard itself is on this port.
+		[ "$SCHEME" != http ] || ufw allow "$DASH_PORT/tcp" >/dev/null
 		ufw --force enable >/dev/null
 	else
 		say "ufw isn't installed; make sure only ports 22, 80 and 443 are open to the internet"
@@ -382,7 +419,7 @@ start_everything() {
 	done
 	i=0
 	while [ $i -lt 40 ]; do
-		if curl -fs -o /dev/null http://127.0.0.1:8080/healthz && curl -fs -o /dev/null http://127.0.0.1:3000/signin; then
+		if curl -fs -o /dev/null http://127.0.0.1:8080/healthz && curl -fs -o /dev/null "http://127.0.0.1:$DASH_PORT/signin"; then
 			return 0
 		fi
 		i=$((i + 1))
@@ -395,9 +432,29 @@ start_everything() {
 }
 
 finish() {
-	ip=$(public_ip 2>/dev/null || echo "this server's IP")
-	resolved=$(getent hosts "$PLATFORM_DOMAIN" 2>/dev/null | awk '{ print $1; exit }' || true)
-	cat <<MSG
+	owner_hint="sign up: the first account is the owner"
+	[ -z "$OWNER_EMAIL" ] || owner_hint="sign up with $OWNER_EMAIL: that account is the owner"
+	if [ "$SCHEME" = http ]; then
+		cat <<MSG
+
+✓ Greyship $VERSION is running.
+
+Open  $DASH_URL   and $owner_hint.
+No email provider is set, so the login code is saved on this server: run   greyship-admin codes
+From your computer (installs grey, already pointed at this server):
+    curl -fsSL $DASH_URL/install | GREY_SERVER=$DASH_URL sh
+then   grey login
+Apps you deploy get free addresses like  http://<name>.$APPS_DOMAIN
+
+Nothing is encrypted yet: login codes and your CLI token cross the network in the clear. That's fine while you try
+it out; before real use, point a domain at this server and run
+    greyship-admin domain greyship.example.com example.net you@example.com
+which switches the dashboard and your apps to your domains with HTTPS and prints the DNS records to add.
+MSG
+	else
+		ip=$(public_ip 2>/dev/null || echo "this server's IP")
+		resolved=$(getent hosts "$PLATFORM_DOMAIN" 2>/dev/null | awk '{ print $1; exit }' || true)
+		cat <<MSG
 
 ✓ Greyship $VERSION is running.
 
@@ -406,18 +463,23 @@ DNS: point these records at $ip (skip any that already exist):
     A   *.$PLATFORM_DOMAIN     →  $ip    (s3.… for uploads, api.… for the API)
     A   *.$APPS_DOMAIN         →  $ip    (your apps live here)
 MSG
-	if [ -n "$resolved" ] && [ "$resolved" != "$ip" ]; then
-		say "    (note: $PLATFORM_DOMAIN points at $resolved right now, not at this server)"
-	elif [ -z "$resolved" ]; then
-		say "    ($PLATFORM_DOMAIN doesn't resolve yet; HTTPS works as soon as it does)"
+		if [ -n "$resolved" ] && [ "$resolved" != "$ip" ]; then
+			say "    (note: $PLATFORM_DOMAIN points at $resolved right now, not at this server)"
+		elif [ -z "$resolved" ]; then
+			say "    ($PLATFORM_DOMAIN doesn't resolve yet; HTTPS works as soon as it does)"
+		fi
+		cat <<MSG
+
+Then open https://$PLATFORM_DOMAIN and $owner_hint.
+No email provider is set, so the login code is saved on this server: run   greyship-admin codes
+From your computer (installs grey, already pointed at this server):
+    curl -fsSL https://$PLATFORM_DOMAIN/install | GREY_SERVER=https://$PLATFORM_DOMAIN sh
+then   grey login
+MSG
 	fi
 	cat <<MSG
 
-Then open https://$PLATFORM_DOMAIN and sign up with $OWNER_EMAIL: that account is the owner.
-No email provider is set, so the login code is saved on this server: run   greyship-admin codes
-From your computer:   curl -fsSL https://greyship.tech/install | sh   then   grey login https://$PLATFORM_DOMAIN
-
-Looking after it: greyship-admin status | logs | codes | upgrade     Settings: $ETC/greyship.env
+Looking after it: greyship-admin status | logs | codes | domain | upgrade     Settings: $ETC/greyship.env
 Docs: https://docs.greyship.tech/self-hosting
 MSG
 }

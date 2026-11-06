@@ -50,4 +50,6 @@ export type AdminDetail = {
   AppLogs: { ID: number; Ts: string; Stream: string; Line: string; InstanceID: string; ServiceName: string }[] | null;
 };
 
-export type AdminUser = { ID: string; Email: string; CreatedAt: string; Teams: string; Projects: number; LastDeploy: string | null };
+export type AdminUser = { ID: string; Email: string; Name: string; IsOwner: boolean; HasPassword: boolean; BetaTester: boolean; CreatedAt: string; Teams: string; Projects: number; LastDeploy: string | null };
+
+export type AdminMail = { enabled: boolean; active: boolean; source: "dashboard" | "environment" | "none"; sending_domain: string; from_name: string; key_set: boolean };

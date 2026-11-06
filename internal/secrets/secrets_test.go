@@ -71,3 +71,24 @@ func TestHash(t *testing.T) {
 		t.Fatal("hashes must be stable and differ by project and key")
 	}
 }
+
+func TestInstanceSecrets(t *testing.T) {
+	kr, _ := NewKeyring(master)
+	other, _ := NewKeyring(strings.Repeat("ab", 32))
+	sealed, err := kr.Seal("mail:resend", []byte("re_secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(sealed, []byte("re_secret")) {
+		t.Fatal("the secret is visible in its ciphertext")
+	}
+	if got, err := kr.Open("mail:resend", sealed); err != nil || string(got) != "re_secret" {
+		t.Fatalf("open = %q, %v", got, err)
+	}
+	if _, err := kr.Open("other", sealed); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("another label = %v, want ErrDecrypt", err)
+	}
+	if _, err := other.Open("mail:resend", sealed); !errors.Is(err, ErrDecrypt) {
+		t.Fatalf("another master key = %v, want ErrDecrypt", err)
+	}
+}

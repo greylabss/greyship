@@ -32,9 +32,11 @@ type userJSON struct {
 	// BetaTester: on the private-beta list (decisions.md 049); the dashboard shows a badge.
 	BetaTester bool `json:"beta_tester"`
 	// IsOwner: owns this instance and may open the admin view (decisions.md 050).
-	IsOwner   bool       `json:"is_owner"`
-	Teams     []teamJSON `json:"teams,omitempty"`
-	TokenTeam string     `json:"token_team,omitempty"`
+	IsOwner bool `json:"is_owner"`
+	// HasPassword: the account can sign in with a password (decisions.md 051). Never the hash.
+	HasPassword bool       `json:"has_password"`
+	Teams       []teamJSON `json:"teams,omitempty"`
+	TokenTeam   string     `json:"token_team,omitempty"`
 }
 
 type teamJSON struct {
@@ -46,7 +48,7 @@ type teamJSON struct {
 }
 
 func toUserJSON(u store.User) userJSON {
-	return userJSON{ID: u.ID, Email: u.Email, Name: u.Name, AvatarURL: u.AvatarUrl, BetaTester: u.BetaTester, IsOwner: u.IsOwner}
+	return userJSON{ID: u.ID, Email: u.Email, Name: u.Name, AvatarURL: u.AvatarUrl, BetaTester: u.BetaTester, IsOwner: u.IsOwner, HasPassword: u.PasswordHash != ""}
 }
 
 func (s *Server) startEmail(w http.ResponseWriter, r *http.Request) {
@@ -233,7 +235,7 @@ func (s *Server) sessionName() string {
 
 // cookie builds every cookie the API sets: httpOnly, SameSite=Lax, and Secure except in development (plain http://localhost).
 func (s *Server) cookie(name, value, path string, maxAge int) *http.Cookie {
-	return &http.Cookie{Name: name, Value: value, Path: path, MaxAge: maxAge, HttpOnly: true, Secure: s.SecureCookie, SameSite: http.SameSiteLaxMode} //nolint:gosec // Secure is false only when GREYSHIP_ENV=development
+	return &http.Cookie{Name: name, Value: value, Path: path, MaxAge: maxAge, HttpOnly: true, Secure: s.SecureCookie, SameSite: http.SameSiteLaxMode} //nolint:gosec // Secure is false only in development or before the instance has a domain (HTTPOnly)
 }
 
 type userKey struct{}

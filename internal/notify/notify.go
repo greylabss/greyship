@@ -73,7 +73,7 @@ func (n *Notifier) Handle(ctx context.Context, job bus.Job) error {
 	if err != nil {
 		return fmt.Errorf("load notification settings: %w", err)
 	}
-	if settings.Email && row.EmailedAt == nil && n.Mail != nil {
+	if settings.Email && row.EmailedAt == nil && n.mailEnabled(ctx) {
 		msg := mail.Message{From: n.From, To: to, Subject: ev.title, Text: ev.body + "\n\n" + n.DashboardURL + ev.link + "\n\n" + footer}
 		if err := n.Mail.Send(ctx, msg); err != nil {
 			return fmt.Errorf("email notification %s: %w", row.ID, err)
@@ -89,6 +89,17 @@ func (n *Notifier) Handle(ctx context.Context, job bus.Job) error {
 		}
 	}
 	return nil
+}
+
+// mailEnabled is false without a mail sender, or when the sender says email is switched off (mail.Dynamic).
+func (n *Notifier) mailEnabled(ctx context.Context) bool {
+	if n.Mail == nil {
+		return false
+	}
+	if s, ok := n.Mail.(interface{ Enabled(context.Context) bool }); ok {
+		return s.Enabled(ctx)
+	}
+	return true
 }
 
 const footer = "You get these for deploys you start and projects you create on Greyship. Turn them off in Settings > Notifications, or with grey notifications email off."

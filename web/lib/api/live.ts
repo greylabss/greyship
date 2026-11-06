@@ -70,7 +70,7 @@ async function ndjson<T>(path: string): Promise<T[]> {
     .map((l) => JSON.parse(l) as T);
 }
 
-type ApiUser = { id: string; email: string; name?: string; beta_tester?: boolean; teams: { id: string; slug: string; name: string; plan: string; role: string }[] };
+type ApiUser = { id: string; email: string; name?: string; beta_tester?: boolean; has_password?: boolean; teams: { id: string; slug: string; name: string; plan: string; role: string }[] };
 type ApiProject = { id: string; team: string; name: string; slug: string; created_at: string };
 type ApiDeployment = {
   id: string;
@@ -269,7 +269,7 @@ export const live = {
   async me(): Promise<User> {
     const { user } = await json<{ user: ApiUser }>("/v1/me");
     const name = user.name || user.email.split("@")[0];
-    return { id: user.id, name, email: user.email, initials: name.slice(0, 1).toUpperCase(), betaTester: user.beta_tester ?? false };
+    return { id: user.id, name, email: user.email, initials: name.slice(0, 1).toUpperCase(), betaTester: user.beta_tester ?? false, hasPassword: user.has_password ?? false };
   },
 
   async teams(): Promise<string[]> {

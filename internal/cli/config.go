@@ -62,8 +62,8 @@ func saveConfig(path string, c Config) error {
 	return nil
 }
 
-// normalizeServer turns what someone typed after grey login into an API base URL: https unless it's this
-// machine, no path, no trailing slash. A self-hosted Greyship serves /v1 on its dashboard's address, so either the
+// normalizeServer turns what someone typed after grey login into an API base URL: https unless they typed http://
+// (a fresh install without a domain yet), no path, no trailing slash. A self-hosted Greyship serves /v1 on its dashboard's address, so either the
 // dashboard's or the API's address works.
 func normalizeServer(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
@@ -74,9 +74,17 @@ func normalizeServer(raw string) (string, error) {
 	if err != nil || u.Host == "" || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
 		return "", fmt.Errorf("%q isn't a server address; use something like https://greyship.example.com", raw)
 	}
-	local := u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1"
-	if u.Scheme != "https" && (u.Scheme != "http" || !local) {
-		return "", fmt.Errorf("%q: use https (http is only for localhost)", raw)
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return "", fmt.Errorf("%q: use https:// (or http:// for a server that has no domain yet)", raw)
 	}
 	return u.Scheme + "://" + u.Host, nil
+}
+
+// unencrypted reports whether talking to base sends the token in the clear over a network.
+func unencrypted(base string) bool {
+	u, err := url.Parse(base)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	return u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1"
 }

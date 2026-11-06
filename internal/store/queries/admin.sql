@@ -78,7 +78,7 @@ SELECT * FROM (
 ) x ORDER BY id;
 
 -- name: AdminUsers :many
-SELECT u.id, u.email::text AS email, u.created_at,
+SELECT u.id, u.email::text AS email, u.name, u.is_owner, (u.password_hash <> '')::bool AS has_password, u.beta_tester, u.created_at,
        coalesce(string_agg(DISTINCT t.slug, ', '), '')::text AS teams,
        (SELECT count(*) FROM projects p JOIN memberships m2 ON m2.team_id = p.team_id WHERE m2.user_id = u.id)::bigint AS projects,
        ld.last_deploy

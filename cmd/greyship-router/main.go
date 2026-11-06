@@ -49,6 +49,9 @@ func run(logger *slog.Logger) error {
 
 	table := &router.Table{}
 	rt := &router.Router{Table: table, Domain: cfg.AppsDomain, PlatformDomain: cfg.PlatformDomain, Transport: router.NewTransport(), Commands: router.QueueCommands{Pool: pool}, Logger: logger, Platform: cfg.Platform}
+	if cfg.HTTPOnly {
+		return serveHTTPOnly(ctx, cfg, pool, table, rt, logger)
+	}
 	redirect := router.Redirect(cfg.AppsPort, cfg.AppsDomain, cfg.PlatformDomain)
 	tlsConfig, redirect, err := certificates(cfg, table, rt, redirect)
 	if err != nil {
@@ -70,6 +73,24 @@ func run(logger *slog.Logger) error {
 		return errors.Join(httpsSrv.Shutdown(shutdown), httpSrv.Shutdown(shutdown))
 	})
 	logger.Info("greyship-router listening", "https", cfg.HTTPSAddr, "http", cfg.HTTPAddr, "domain", cfg.AppsDomain, "platform_domain", cfg.PlatformDomain, "dev_ca", cfg.DevCADir != "")
+	return g.Wait()
+}
+
+// serveHTTPOnly is a fresh install before it has a domain: everything on plain HTTP (decisions.md 050). Nothing
+// here is encrypted, so the installer tells the owner to add a domain with greyship-admin domain.
+func serveHTTPOnly(ctx context.Context, cfg config.Router, pool *pgxpool.Pool, table *router.Table, rt *router.Router, logger *slog.Logger) error {
+	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: rt, ReadHeaderTimeout: 10 * time.Second}
+	g, ctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return table.Watch(ctx, pool, 10*time.Second, logger) })
+	g.Go(func() error { rt.PauseIdle(ctx); return nil })
+	g.Go(func() error { return serve(srv.ListenAndServe()) })
+	g.Go(func() error {
+		<-ctx.Done()
+		shutdown, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdown)
+	})
+	logger.Warn("greyship-router listening on plain HTTP only: add a domain to get HTTPS", "http", cfg.HTTPAddr, "domain", cfg.AppsDomain, "platform_domain", cfg.PlatformDomain)
 	return g.Wait()
 }
 

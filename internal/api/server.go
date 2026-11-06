@@ -47,6 +47,8 @@ type Options struct {
 	GitHub        GitHubDeploys
 	Notifications Notifications
 	Admin         Admin
+	Accounts      Accounts
+	Mail          MailSettings
 	// PushKey is the VAPID public key for browser push; empty when push isn't configured.
 	PushKey string
 	// WebhookSecret checks GitHub's deliveries (GREYSHIP_GITHUB_WEBHOOK_SECRET).
@@ -58,6 +60,8 @@ type Options struct {
 	AppsPort      string // HTTPS port shown in URLs; empty for 443
 	BuildGOARCH   string // CPU the runtime nodes run; local builds target it
 	SecureCookie  bool
+	// HTTPOnly: the instance has no TLS yet, so app URLs are http:// (decisions.md 050).
+	HTTPOnly bool
 	// ProxySecret is shared with the dashboard, which serves /v1 on its own origin and passes the browser's
 	// address in X-Greyship-Client-IP; only requests carrying this secret may set it.
 	ProxySecret string
@@ -89,6 +93,17 @@ func New(o Options) *Server {
 	s.mux.Handle("POST /v1/tokens", s.requireUser(http.HandlerFunc(s.createToken)))
 	s.mux.Handle("DELETE /v1/tokens/{id}", s.requireUser(http.HandlerFunc(s.revokeToken)))
 
+	if o.Accounts != nil {
+		s.mux.HandleFunc("POST /v1/auth/password/login", s.passwordLogin)
+		s.mux.Handle("POST /v1/me/password", s.requireUser(http.HandlerFunc(s.changeOwnPassword)))
+		s.mux.Handle("POST /v1/admin/users", s.requireAdmin(s.adminCreateUser))
+		s.mux.Handle("PATCH /v1/admin/users/{id}", s.requireAdmin(s.adminUpdateUser))
+	}
+	if o.Mail != nil {
+		s.mux.Handle("GET /v1/admin/mail", s.requireAdmin(s.adminMailGet))
+		s.mux.Handle("PUT /v1/admin/mail", s.requireAdmin(s.adminMailPut))
+		s.mux.Handle("POST /v1/admin/mail/test", s.requireAdmin(s.adminMailTest))
+	}
 	if o.Admin != nil {
 		s.mux.Handle("GET /v1/admin", s.requireAdmin(func(w http.ResponseWriter, _ *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]bool{"admin": true})
@@ -181,7 +196,7 @@ func (s *Server) cors(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method != http.MethodOptions {
 		return false
 	}
-	h.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE")
+	h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE")
 	h.Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 	h.Set("Access-Control-Max-Age", "600")
 	w.WriteHeader(http.StatusNoContent)

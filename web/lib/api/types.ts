@@ -16,6 +16,7 @@ export type User = {
   name: string;
   email: string;
   betaTester?: boolean;
+  hasPassword?: boolean;
   initials: string;
 };
 

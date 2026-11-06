@@ -36,6 +36,7 @@ type Config struct {
 	DashboardURL string
 	SignupAllow  string // GREYSHIP_SIGNUP_ALLOWLIST: emails or @domains that may create accounts; empty for anyone
 	SignupOpen   bool   // GREYSHIP_SIGNUP_OPEN: anyone may sign up; otherwise only the first account, the allowlist and the beta list
+	HTTPOnly     bool   // GREYSHIP_HTTP_ONLY: no TLS yet (a fresh install on a bare IP); the owner adds a domain later
 	PlansOn      bool   // GREYSHIP_PLANS: teams get the Free plan and its limits; off, they get Unlimited (decisions.md 050)
 	OwnerEmail   string // GREYSHIP_OWNER_EMAIL: this account is made an instance owner at startup
 	BetaURL      string // GREYSHIP_BETA_URL: the private-beta app whose list lets testers sign up; empty for none
@@ -71,6 +72,7 @@ func Load(getenv func(string) string) (Config, error) {
 		DashboardURL: strings.TrimRight(get("DASHBOARD_URL", "http://localhost:3000"), "/"),
 		SignupAllow:  get("SIGNUP_ALLOWLIST", ""),
 		SignupOpen:   get("SIGNUP_OPEN", "") == "true",
+		HTTPOnly:     get("HTTP_ONLY", "") == "true",
 		PlansOn:      get("PLANS", "") == "on",
 		OwnerEmail:   strings.ToLower(strings.TrimSpace(get("OWNER_EMAIL", ""))),
 		BetaURL:      get("BETA_URL", ""),
@@ -323,7 +325,8 @@ type Router struct {
 	AppsDomain  string // services are <label>.<AppsDomain>
 	// PlatformDomain holds api. and s3.; a separate registrable domain from AppsDomain in production.
 	PlatformDomain string
-	AppsPort       string // the HTTPS port in public URLs; empty for 443
+	AppsPort       string // the port in public URLs; empty for 443 (80 when HTTPOnly)
+	HTTPOnly       bool   // serve plain HTTP only: no TLS, no certificates (decisions.md 050)
 	HTTPSAddr      string
 	HTTPAddr       string
 	DevCADir       string // development: sign certificates with a local CA kept here
@@ -345,6 +348,7 @@ func LoadRouter(getenv func(string) string) (Router, error) {
 		CertDir:     get("ROUTER_CERT_DIR", "/var/lib/greyship/certs"),
 		ACMEEmail:   get("ACME_EMAIL", ""),
 		Platform:    map[string]string{},
+		HTTPOnly:    get("HTTP_ONLY", "") == "true",
 	}
 	var errs []error
 	// GREYSHIP_ROUTER_PLATFORM="@=127.0.0.1:3000,api=127.0.0.1:8080,s3=127.0.0.1:3900" on a single server; "@" is
@@ -367,7 +371,7 @@ func LoadRouter(getenv func(string) string) (Router, error) {
 		errs = append(errs, errors.New("GREYSHIP_APPS_DOMAIN is required outside development"))
 	}
 	r.PlatformDomain = get("PLATFORM_DOMAIN", r.AppsDomain)
-	if r.DevCADir == "" && r.ACMEEmail == "" {
+	if r.DevCADir == "" && r.ACMEEmail == "" && !r.HTTPOnly {
 		errs = append(errs, errors.New("GREYSHIP_ACME_EMAIL is required for Let's Encrypt certificates"))
 	}
 	return r, errors.Join(errs...)

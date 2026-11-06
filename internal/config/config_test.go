@@ -72,3 +72,17 @@ func TestLoadBuilder(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// A fresh install has no domain and no TLS: the router needs no ACME email, then.
+func TestRouterHTTPOnly(t *testing.T) {
+	env := map[string]string{"GREYSHIP_DATABASE_URL": "postgres://x", "GREYSHIP_APPS_DOMAIN": "apps-1-2-3-4.sslip.io"}
+	get := func(k string) string { return env[k] }
+	if _, err := LoadRouter(get); err == nil || !strings.Contains(err.Error(), "GREYSHIP_ACME_EMAIL") {
+		t.Fatalf("an HTTPS router without an email = %v, want the ACME email error", err)
+	}
+	env["GREYSHIP_HTTP_ONLY"] = "true"
+	r, err := LoadRouter(get)
+	if err != nil || !r.HTTPOnly {
+		t.Fatalf("an HTTP-only router = %+v, %v", r, err)
+	}
+}

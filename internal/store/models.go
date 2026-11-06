@@ -181,6 +181,15 @@ type LoginCode struct {
 	CreatedAt  time.Time
 }
 
+type MailSetting struct {
+	ID            bool
+	Enabled       bool
+	ApiKeyEnc     []byte
+	SendingDomain string
+	FromName      string
+	UpdatedAt     time.Time
+}
+
 type Membership struct {
 	TeamID string
 	UserID string
@@ -226,6 +235,13 @@ type OauthIdentity struct {
 	Subject   string
 	UserID    string
 	Email     string
+	CreatedAt time.Time
+}
+
+type PasswordFailure struct {
+	ID        int64
+	Email     string
+	Ip        string
 	CreatedAt time.Time
 }
 
@@ -327,11 +343,12 @@ type UploadedBinary struct {
 }
 
 type User struct {
-	ID         string
-	Email      string
-	Name       string
-	AvatarUrl  string
-	CreatedAt  time.Time
-	BetaTester bool
-	IsOwner    bool
+	ID           string
+	Email        string
+	Name         string
+	AvatarUrl    string
+	CreatedAt    time.Time
+	BetaTester   bool
+	IsOwner      bool
+	PasswordHash string
 }

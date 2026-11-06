@@ -62,6 +62,10 @@ There are no passwords. You prove you own an email address, or a Google or GitHu
 2. You type the code back. The API checks it. If you're new, it creates your account and a personal team, provided your email is on the beta invite list.
 3. The API gives your browser a **session cookie**: a long random secret. Only a fingerprint (hash) of it is stored in the database, so even someone reading the database can't use it.
 
+**Email:** the admin pastes a Resend key and domain in Admin > Email. The key is encrypted with the instance's master key before it is saved. Every email (login codes, notifications) asks `mail.Dynamic` which provider to use at that moment, so changes apply at once and, with email off, codes land in a folder on the server instead.
+
+**With a password:** an admin can create an account with a password for someone. They type email and password; the API checks a salted PBKDF2 hash (never the password itself), counts wrong tries (8 per email, 15 minutes) and then gives the same session cookie.
+
 **In the terminal (`grey login`):**
 1. The CLI asks the API for a "device code" and opens `greyship.tech/device` in your browser, showing a short code like `KRWT-PLMB`.
 2. You check the code matches what your terminal shows and click Approve, signed in on the website.

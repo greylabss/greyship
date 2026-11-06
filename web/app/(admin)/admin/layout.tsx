@@ -26,6 +26,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <Link href="/admin/users" className="hover:text-fg">
             Users
           </Link>
+          <Link href="/admin/email" className="hover:text-fg">
+            Email
+          </Link>
         </nav>
         <form action="/admin/deployments" className="ml-auto flex w-full gap-2 sm:w-auto">
           <input

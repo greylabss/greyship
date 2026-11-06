@@ -47,3 +47,24 @@ INSERT INTO oauth_identities (provider, subject, user_id, email) VALUES ($1, $2,
 
 -- name: MarkBetaTester :exec
 UPDATE users SET beta_tester = true WHERE id = $1;
+
+-- name: SetPasswordHash :exec
+UPDATE users SET password_hash = $2 WHERE id = $1;
+
+-- name: SetOwner :exec
+UPDATE users SET is_owner = $2 WHERE id = $1;
+
+-- name: CountOwners :one
+SELECT count(*) FROM users WHERE is_owner;
+
+-- name: RecordPasswordFailure :exec
+INSERT INTO password_failures (email, ip) VALUES ($1, $2);
+
+-- name: CountPasswordFailuresForEmail :one
+SELECT count(*) FROM password_failures WHERE email = $1 AND created_at > $2;
+
+-- name: CountPasswordFailuresForIP :one
+SELECT count(*) FROM password_failures WHERE ip = $1 AND created_at > $2;
+
+-- name: ClearPasswordFailures :exec
+DELETE FROM password_failures WHERE email = $1;
