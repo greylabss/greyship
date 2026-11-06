@@ -1,0 +1,10 @@
+{
+  "services": [
+    {
+      "name": "jobs",
+      "path": "./cmd/jobs",
+      "type": "worker"
+    }
+  ],
+  "project": "acme"
+}

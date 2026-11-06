@@ -1,0 +1,38 @@
+#!/bin/sh
+# Looking after a Greyship server: greyship-admin status | logs [service] | codes | upgrade | version
+# The grey command (for deploying apps) is a different program; this one only runs on the server.
+set -eu
+services="api builder scheduler agent router dashboard"
+
+case "${1:-status}" in
+	status)
+		for s in $services; do
+			state=$(systemctl is-active "greyship-$s" 2>/dev/null || true)
+			printf '%-12s %s\n' "$s" "$state"
+		done
+		printf '%-12s %s\n' infra "$(systemctl is-active greyship-infra 2>/dev/null || true)"
+		;;
+	logs)
+		svc=${2:-api}
+		exec journalctl -u "greyship-$svc" -n 100 -f --no-pager
+		;;
+	codes)
+		# Without an email provider, login codes are saved as files. Shows the newest few, newest last.
+		dir=/var/lib/greyship/tmp/outbox
+		[ -d "$dir" ] || { echo "no login codes yet: nobody has asked for one"; exit 0; }
+		ls -tr "$dir" | tail -3 | while read -r f; do
+			echo "== $f"
+			cat "$dir/$f"
+		done
+		;;
+	upgrade)
+		exec sh -c 'curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sh'
+		;;
+	version)
+		cat /usr/local/lib/greyship/VERSION 2>/dev/null || echo unknown
+		;;
+	*)
+		echo "usage: greyship-admin status | logs [service] | codes | upgrade | version" >&2
+		exit 1
+		;;
+esac

@@ -1,0 +1,75 @@
+---
+title: Installation
+description: Install, update and remove grey, the Greyship CLI.
+---
+
+## Install
+
+```sh
+curl -fsSL https://greyship.tech/install | sh
+```
+
+The same script is in the CLI's public repository:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/cli/install.sh | sh
+```
+
+It works on **macOS** and **Linux**, on Intel (amd64) and ARM (arm64). On **Windows**, install it inside
+[WSL](https://learn.microsoft.com/windows/wsl/install).
+
+What the installer does:
+
+- downloads the latest release from [github.com/greylabss/greyship](https://github.com/greylabss/greyship/releases);
+- checks its sha256 against the release's `checksums.txt`, and stops if they differ;
+- installs `grey` into `/usr/local/bin`, or `~/.local/bin` when `/usr/local/bin` isn't writable. It never asks
+  for `sudo`;
+- adds `gray` and `greyship` as aliases, so every spelling works.
+
+If the folder isn't on your `PATH`, it prints the line to add to `~/.zshrc` or `~/.bashrc`.
+
+### Options
+
+| Variable | Effect |
+| --- | --- |
+| `GREY_VERSION=v0.1.0` | install a specific release instead of the latest |
+| `GREY_INSTALL_DIR=~/bin` | install into another folder |
+
+```sh
+curl -fsSL https://greyship.tech/install | GREY_INSTALL_DIR=~/bin sh
+```
+
+## Check
+
+```sh
+grey --version
+```
+
+## Update
+
+Run the installer again. It replaces the binary in place.
+
+## Uninstall
+
+```sh
+rm "$(command -v grey)" "$(dirname "$(command -v grey)")"/{gray,greyship}
+rm -rf ~/.config/greyship                          # Linux: your login token
+rm -rf ~/Library/Application\ Support/greyship      # macOS: your login token
+```
+
+Run `grey logout` first if you want the token revoked on Greyship too.
+
+## CI
+
+In CI there's no browser to log in with. Every `grey login` creates a token for that machine, listed (and revocable)
+in the dashboard under **Settings > API tokens**. Log in once for CI (for example on a spare machine or a container),
+take the `token` from grey's `config.json` (`~/.config/greyship/` on Linux, `~/Library/Application Support/greyship/`
+on macOS), store it as a secret in your CI, and set it as `GREYSHIP_TOKEN`. A token only acts within its team.
+Creating CI tokens directly in the dashboard is **coming soon**.
+
+```sh
+export GREYSHIP_TOKEN=…
+grey deploy --yes
+```
+
+`--yes` applies `.env.prod` changes without asking. See [Environment variables](/environment-variables).

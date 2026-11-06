@@ -1,0 +1,14 @@
+[Unit]
+Description=Greyship sandbox network and firewall (containers can't reach the server)
+After=docker.service firewalld.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+Environment=MODPROXY_BINARY=/usr/local/lib/greyship/greyship-modproxy
+Environment=GREYSHIP_BUILD_DOCKER_HOST=unix:///var/run/docker.sock
+ExecStart=/usr/local/lib/greyship/sandbox-init.sh
+
+[Install]
+WantedBy=multi-user.target

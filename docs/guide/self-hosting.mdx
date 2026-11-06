@@ -1,0 +1,159 @@
+---
+title: Self-hosting
+description: Run Greyship on your own server with one command.
+---
+
+Greyship is open source ([AGPL-3.0](https://github.com/greylabss/greyship)) and made to run on a server you own. One
+server runs everything: the API, the dashboard, the builder, the sandboxes your apps run in, and the router that gives
+them HTTPS.
+
+<Callout type="warn" title="Early software">
+Greyship is young. It runs real apps, but expect rough edges, and it's a single server for now (no high availability).
+Keep backups of anything that matters.
+</Callout>
+
+## What you need
+
+- A fresh **Ubuntu 22.04 / 24.04** or **Debian 12** server, **x86_64 or arm64**, with root access.
+- **4 GB of RAM or more** (2 GB runs it, but builds on the server need room). The apps you deploy share what's left.
+- **Ports 80 and 443** free and reachable from the internet.
+- **Two domains** (or subdomains of two domains) you can add DNS records to:
+  - one for the **dashboard**, like `greyship.example.com`;
+  - one for **your apps**, like `example.net`, where each web service gets `<service>-<project>.example.net`.
+
+  Use a different registrable domain for apps than for the dashboard if you can. Browsers then treat them as separate
+  sites, so an app can't act as the dashboard.
+
+## Install
+
+On the server, as root:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh
+```
+
+It asks for the two domains and your email, then:
+
+1. installs Docker, [gVisor](https://gvisor.dev), Postgres, an S3-compatible store ([Garage](https://garagehq.deuxfleurs.fr)) and Node.js;
+2. downloads the release and checks its checksums;
+3. generates every secret into `/etc/greyship` (readable by root only);
+4. sets Greyship up as systemd services and turns on a firewall that allows only SSH, HTTP and HTTPS;
+5. prints the DNS records to add.
+
+To skip the questions: `... | sudo sh -s -- --domain greyship.example.com --apps-domain example.net --email you@example.com`.
+
+## DNS
+
+Point these records at the server's public IP:
+
+| Record | Name | For |
+| --- | --- | --- |
+| A | `greyship.example.com` | the dashboard |
+| A | `*.greyship.example.com` | `s3.…` (uploads) and `api.…` |
+| A | `*.example.net` | your apps |
+
+Certificates come from Let's Encrypt, automatically, the first time each name is visited.
+
+### Trying it without a domain
+
+`--sslip` uses free [sslip.io](https://sslip.io) names built from the server's IP (like
+`greyship-203-0-113-7.sslip.io`), so nothing needs configuring:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh -s -- --sslip --email you@example.com
+```
+
+Use it to try Greyship out, not to run anything real. All of sslip.io counts as one site to browsers, and Let's
+Encrypt's certificate limits are shared by every sslip.io user, so HTTPS can fail to issue.
+
+## First login
+
+Open `https://greyship.example.com` and sign up with the email you gave the installer. **That account is the owner:**
+it can open the admin view, and for now it's the only account that can sign up.
+
+No email provider is configured, so the login code is saved on the server instead. Read it with:
+
+```sh
+greyship-admin codes
+```
+
+To get real emails, add `GREYSHIP_RESEND_API_KEY=` and `GREYSHIP_MAIL_FROM=` to `/etc/greyship/greyship.env` (a
+[Resend](https://resend.com) key and a sender address on a verified domain) and restart the API.
+
+## Use it
+
+On your computer:
+
+```sh
+curl -fsSL https://greyship.tech/install | sh
+grey login https://greyship.example.com
+cd my-go-project
+grey deploy
+```
+
+`grey` remembers the server, so every later command talks to it. `grey whoami` shows which one. To use another Greyship
+again, run `grey login <its address>`.
+
+## Letting other people in
+
+Signup is closed after the owner's account. In `/etc/greyship/greyship.env`:
+
+```sh
+# let specific emails or whole domains sign up
+GREYSHIP_SIGNUP_ALLOWLIST=teammate@example.com,@example.com
+# or let anyone sign up (only on a private network or behind your own access control)
+GREYSHIP_SIGNUP_OPEN=true
+```
+
+then `systemctl restart greyship-api`. Everyone gets their own team and their own projects.
+
+## Keeping it running
+
+```sh
+greyship-admin status          # is every service up
+greyship-admin logs api        # follow a service's log (api, builder, scheduler, agent, router, dashboard)
+greyship-admin upgrade         # install the latest release (keeps your settings and data)
+```
+
+Settings live in `/etc/greyship/greyship.env`; restart with
+`systemctl restart greyship-api greyship-builder greyship-scheduler greyship-agent greyship-router`.
+
+### Backups
+
+Back up these two things:
+
+- **`/etc/greyship`**. It holds the master key that unlocks every stored env var. Lose it and the stored values can't
+  be read.
+- **The database**:
+
+  ```sh
+  docker compose -p greyship -f /usr/local/lib/greyship/compose.yml exec -T postgres \
+    pg_dump -U greyship -Fc greyship > greyship-$(date +%F).dump
+  ```
+
+Built binaries and uploaded sources live in the `greyship-garage` Docker volume. They're needed for rollbacks, not for
+redeploying: any project can be deployed again from its source.
+
+## What's different from the hosted beta
+
+- **No plans or limits.** Every team is on an unlimited plan: no build-minute caps, no project limits.
+- **Builds run on your server** inside gVisor. (Greyship can also build on [Fly.io](https://fly.io) machines; that is an
+  advanced setting.)
+- **GitHub push-to-deploy** needs a GitHub App of your own. Importing a *public* repository by link works out of the box;
+  a guided setup for the app is coming soon.
+
+## Uninstall
+
+```sh
+systemctl disable --now greyship-dashboard greyship-router greyship-agent greyship-scheduler greyship-builder greyship-api greyship-infra greyship-firewall
+docker compose -p greyship -f /usr/local/lib/greyship/compose.yml down -v   # deletes the database and stored binaries
+rm -rf /usr/local/lib/greyship /etc/greyship /etc/systemd/system/greyship-*.service /usr/local/bin/greyship-admin
+```
+
+## Security notes
+
+- Every app runs in a gVisor sandbox with its own network: it can reach the internet, but not other apps, the server,
+  or Greyship's own services.
+- The server runs other people's code, so keep it patched, keep SSH locked down (keys, no passwords), and don't turn off
+  AppArmor.
+- Found a vulnerability? Report it privately through the repository's Security tab.

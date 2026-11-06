@@ -1,0 +1,38 @@
+---
+title: Introduction
+description: Greyship runs Go backends that scale to zero. Deploy with one command; pay only while your code runs.
+---
+
+Greyship is an open-source ([AGPL-3.0](https://github.com/greylabss/greyship)) serverless platform for **Go**, made to
+run on your own server. You bring a normal Go project (a `go.mod`, one or more `main` packages)
+and Greyship builds it, runs every service in its own sandbox, gives web services an HTTPS URL, and puts them to
+sleep when nobody is using them. The next request wakes them in milliseconds.
+
+There are no servers to manage and no Dockerfile to write.
+
+<Cards>
+  <Card title="Quickstart" href="/quickstart" description="Install grey and deploy your first backend in two minutes." />
+  <Card title="Deploy from GitHub" href="/github" description="Import a repository; every push deploys." />
+  <Card title="greyship.toml" href="/greyship-toml" description="The optional config file, setting by setting." />
+  <Card title="CLI reference" href="/cli" description="Every grey command and flag." />
+  <Card title="Self-hosting" href="/self-hosting" description="Run Greyship on your own server with one command." />
+</Cards>
+
+## How it works
+
+1. **You deploy.** `grey deploy` in your project, or a push to a connected GitHub repo.
+2. **Greyship finds your services.** It reads your code (it never runs it) and finds every `main` package: one that
+   starts a server becomes a **web** service with a URL, the rest are **workers**. No config needed.
+3. **It builds and checks.** With Go installed, your machine compiles the binaries and only changed ones are
+   uploaded. Otherwise Greyship builds them on a dedicated build machine.
+4. **It switches over safely.** The new version starts, passes its health check, and only then gets the traffic.
+   If anything fails, nothing changes and the live version keeps serving.
+5. **It sleeps when idle.** A web service with no requests pauses after 30 seconds and costs nothing until the
+   next request wakes it.
+
+## Private beta
+
+Greyship is in private beta: it's free, and you sign up with the email you applied with at
+[forms.greyship.tech](https://forms.greyship.tech). Beta testers keep a checkmark next to their name. Some features in these docs are marked
+**coming soon**; they're planned but not available yet. Found a bug or something confusing? Tell us; it's exactly
+what the beta is for.

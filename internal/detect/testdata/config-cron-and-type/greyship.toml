@@ -1,0 +1,8 @@
+[services.cleanup]
+type = "cron"
+schedule = "0 3 * * *"
+
+[services.admin]
+type = "web"
+memory = "256MB"
+max_instances = 3

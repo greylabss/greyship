@@ -1,0 +1,24 @@
+[Unit]
+Description=Greyship API
+After=network-online.target greyship-infra.service greyship-firewall.service docker.service
+Wants=network-online.target
+Requires=greyship-infra.service
+
+[Service]
+User=greyship
+Group=greyship
+SupplementaryGroups=docker
+EnvironmentFile=/etc/greyship/greyship.env
+ExecStart=/usr/local/lib/greyship/greyship-api
+WorkingDirectory=/var/lib/greyship
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/greyship
+
+
+[Install]
+WantedBy=multi-user.target

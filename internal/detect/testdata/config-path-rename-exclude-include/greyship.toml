@@ -1,0 +1,8 @@
+[services.public]
+path = "./cmd/api"
+
+[services.debug]
+exclude = true
+
+[services.demo]
+path = "./examples/demo"

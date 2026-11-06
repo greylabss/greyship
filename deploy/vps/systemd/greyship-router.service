@@ -1,0 +1,25 @@
+[Unit]
+Description=Greyship edge router (HTTPS on 80/443)
+After=network-online.target greyship-infra.service greyship-firewall.service docker.service
+Wants=network-online.target
+Requires=greyship-infra.service
+
+[Service]
+User=greyship
+Group=greyship
+SupplementaryGroups=docker
+EnvironmentFile=/etc/greyship/greyship.env
+ExecStart=/usr/local/lib/greyship/greyship-router
+WorkingDirectory=/var/lib/greyship
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/greyship
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,44 @@
+---
+title: Ports
+description: Listen on any port. Greyship serves it on your URL.
+---
+
+A web service can listen on **any port, any address**, however your framework does it:
+
+```go
+http.ListenAndServe(":3000", mux)          // works
+r.Run(":9000")                              // gin: works
+app.Listen("localhost:4000")                // fiber, localhost only: works
+http.ListenAndServe(":"+os.Getenv("PORT"), mux) // works, and skips one step
+```
+
+Greyship finds the port your app opened and serves it on the service's URL. HTTP, HTTP/2, WebSockets, gRPC and
+anything else over TCP pass through unchanged.
+
+## How it picks the port
+
+- `PORT` is always set to `8080`. An app listening on `8080` on every address is reached directly.
+- Otherwise Greyship waits until your app opens its ports, then serves the **lowest** one.
+- If your app opens more than one (say `3000` for the app and `6060` for pprof), the logs say which one is served:
+
+```text
+greyship: api listens on port 3000; serving it on its URL (it also listens on 6060, which isn't served)
+```
+
+If the lowest port isn't your main server (pprof on `6060`, the app on `9000`), read `PORT` for the main server so
+there's no doubt.
+
+## Health check
+
+A web service must open a port within **30 seconds** of starting, or the deploy fails:
+
+```text
+the app didn't start listening on any port within 30s; a web service must accept connections (any port works)
+```
+
+Usually that means the app is stuck before `ListenAndServe` (waiting for a database it can't reach, for example) or
+it isn't a server at all; if so, make it a [worker](/services#web-or-worker).
+
+<Callout title="Responses">
+A response must start within 30 seconds of the request reaching your app.
+</Callout>

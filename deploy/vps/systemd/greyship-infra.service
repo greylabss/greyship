@@ -1,0 +1,14 @@
+[Unit]
+Description=Greyship infrastructure (Postgres, Garage)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=true
+EnvironmentFile=/etc/greyship/infra.env
+ExecStart=/usr/bin/docker compose -p greyship -f /usr/local/lib/greyship/compose.yml up -d --wait
+ExecStop=/usr/bin/docker compose -p greyship -f /usr/local/lib/greyship/compose.yml stop
+
+[Install]
+WantedBy=multi-user.target

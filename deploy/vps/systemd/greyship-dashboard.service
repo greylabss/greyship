@@ -1,0 +1,22 @@
+[Unit]
+Description=Greyship dashboard (Next.js)
+After=network-online.target greyship-api.service
+Wants=network-online.target
+
+[Service]
+User=greyship
+Group=greyship
+EnvironmentFile=/etc/greyship/dashboard.env
+ExecStart=/usr/local/lib/greyship/node/bin/node /usr/local/lib/greyship/dashboard/server.js
+WorkingDirectory=/usr/local/lib/greyship/dashboard
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/greyship
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,3 @@
+[release]
+command = "./tools/dbmigrate"
+timeout = "5m"

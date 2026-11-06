@@ -1,0 +1,29 @@
+---
+title: URLs and domains
+description: Every web service gets an HTTPS URL.
+---
+
+## Default URLs
+
+Each web service gets:
+
+```text
+https://<service>-<project>.greyshipapp.tech
+```
+
+for example `https://api-shop.greyshipapp.tech`. `grey deploy` prints it when the deploy is live, and the dashboard
+shows it on the project page.
+
+- HTTPS certificates are issued and renewed automatically.
+- If `<service>-<project>` is taken, a short random suffix is added (`api-shop-k7x2.greyshipapp.tech`), shown at deploy
+  time.
+- Names longer than 63 characters are shortened with a short hash.
+- A service keeps its URL across deploys, rollbacks and scaling.
+- Workers and crons get no URL.
+
+Apps live on `greyshipapp.tech`, a different domain from Greyship's own (`greyship.tech`), so no app can read or set
+cookies for the dashboard or another app.
+
+## Custom domains
+
+**Coming soon.** You'll add `api.example.com` with a CNAME (or A/AAAA records for an apex domain), with automatic HTTPS.

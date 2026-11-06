@@ -1,0 +1,3 @@
+[services.cleanup]
+type = "cron"
+schedule = "every night"

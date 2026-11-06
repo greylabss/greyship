@@ -1,0 +1,45 @@
+---
+title: Rollbacks and redeploys
+description: Put an earlier version back in seconds, without rebuilding.
+---
+
+## Roll back
+
+```sh
+grey rollback            # back to the deployment that was live before this one
+grey rollback 9c899571   # back to a specific deployment (the start of its id is enough)
+```
+
+Or in the dashboard: open an earlier deployment and click **Roll back to this**, or use the menu in the
+deployments list.
+
+A rollback is a **new deployment** that runs an earlier deployment's binaries (and its [runtime files](/runtime-files)):
+
+- nothing is rebuilt;
+- the project's **current** env vars are used;
+- the [release command](/services#release-command) doesn't run again;
+- it switches traffic only after the instances are healthy, like any deploy. If they aren't, nothing changes.
+
+```text
+Rolling back to 9c899571 (commit 65569fb)
+Deployment 81c86e0d… queued:
+  │ redeploying the same binaries: no build, no release command
+  │ starting api on eu-1
+  │ live
+```
+
+Any deployment that went live can be rolled back to. One that failed before it went live can't.
+
+<Callout type="warn" title="Rollbacks don't undo migrations">
+If the newer version changed the database schema, the rolled-back code runs against the new schema. Make migrations
+backward-compatible: expand, deploy, then contract.
+</Callout>
+
+## Redeploy
+
+```sh
+grey redeploy
+```
+
+Starts the live deployment's binaries again on fresh instances, for example to pick up changed env vars right away.
+In the dashboard: **Redeploy** on the live deployment.

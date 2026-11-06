@@ -1,0 +1,15 @@
+# Go
+/bin/
+/tmp/
+*.test
+coverage.out
+
+# Local config and secrets
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+dumps/
+fek.txt

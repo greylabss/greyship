@@ -1,0 +1,14 @@
+{
+  "services": [
+    {
+      "name": "api",
+      "path": "./cmd/api",
+      "type": "web"
+    }
+  ],
+  "release": "./tools/dbmigrate",
+  "skipped": [
+    "./cmd/migrate"
+  ],
+  "project": "acme"
+}

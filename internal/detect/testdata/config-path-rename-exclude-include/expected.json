@@ -1,0 +1,23 @@
+{
+  "services": [
+    {
+      "name": "demo",
+      "path": "./examples/demo",
+      "type": "web"
+    },
+    {
+      "name": "orders",
+      "path": "./services/orders",
+      "type": "web"
+    },
+    {
+      "name": "public",
+      "path": "./cmd/api",
+      "type": "web"
+    }
+  ],
+  "skipped": [
+    "./cmd/debug"
+  ],
+  "project": "acme"
+}

@@ -1,0 +1,3 @@
+[services.api]
+memory = "256MB"
+files = ["templates/"]

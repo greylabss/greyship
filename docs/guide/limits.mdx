@@ -1,0 +1,52 @@
+---
+title: Limits and plans
+description: What you get during the beta, and the plans after it.
+---
+
+Greyship is **free during the private beta**. Every account is on the Free plan.
+
+## Free plan (beta)
+
+| | |
+| --- | --- |
+| Projects | 3 |
+| Memory per instance | 128 MB |
+| CPU per instance | up to 1 CPU |
+| Instances per service | up to 2 |
+| Log retention | 1 day |
+| Source upload per deploy | 100 MB compressed |
+| Server build time | 10 minutes per build |
+| Server build machine | 2 dedicated CPUs, 4 GB |
+| Build minutes | 100 a month |
+| Concurrent server builds | 1 |
+| Runtime files | 50 MB, 5,000 files |
+
+## Build minutes
+
+Only builds **on Greyship** count: no Go installed, `grey deploy --remote`, and GitHub deploys. Building on your own
+machine with `grey deploy` is free and never counted. Minutes run from when the build starts on a build machine until
+its binaries are uploaded, not while it waits in the queue.
+
+`grey deploy` prints the month's total after each server build:
+
+```text
+build: 42s · 12/100 min this month
+```
+
+The dashboard shows it on **Usage** and in the sidebar. When a Free team's minutes run out, server builds are refused
+until the 1st of the next month; local builds keep working.
+
+## After the beta
+
+| Plan | Price | Highlights |
+| --- | --- | --- |
+| Free | $0 | everything above |
+| Pro | $8/mo with $8 of usage included | up to 1 GB per instance, 10 instances, always-on services, 7-day logs, preview deploys, 500 build minutes |
+| Team | $25/user/mo | up to 2 GB, 50 instances, 30-day logs, 1,500 build minutes per team |
+
+You pay for running time, never for idle services. Exact usage prices are set before billing starts.
+
+## Sandboxing
+
+Every service runs in its own sandbox (gVisor): it can reach the internet, but never another customer's services,
+Greyship's internal systems or the server itself.

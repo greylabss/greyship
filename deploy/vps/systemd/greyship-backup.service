@@ -1,0 +1,10 @@
+[Unit]
+Description=Greyship nightly Postgres backup to object storage
+After=greyship-infra.service docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/greyship/greyship.env
+# pipefail: a pg_dump that fails must fail the backup, not upload half a dump.
+ExecStart=/bin/bash -o pipefail -c 'docker compose -p greyship -f /usr/local/lib/greyship/compose.yml exec -T postgres pg_dump -U greyship -Fc greyship | /usr/local/lib/greyship/greyship-backup'

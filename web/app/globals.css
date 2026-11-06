@@ -1,0 +1,279 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Tokens from docs/design.md §3 and §7. Light theme later = redefine these vars only. */
+:root {
+  --gs-bg: #0a0a0b;
+  --gs-surface: #121214;
+  --gs-surface-2: #0f0f11;
+  --gs-border: #232326;
+  --gs-border-strong: #2a2a2e;
+  --gs-text: #ededed;
+  --gs-text-muted: #a1a1a6;
+  --gs-text-dim: #7c7c82;
+  --gs-accent: #f2541b;
+  --gs-beta: #5aa9ff; /* the beta tester checkmark */
+  --gs-ok: #3fb97a;
+  --gs-error: #e5534b;
+  --gs-warn: #d9a21b;
+  color-scheme: dark;
+}
+
+/* Default Tailwind scales are cleared so only design.md tokens can be used (decisions.md 021). */
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--gs-bg);
+  --color-surface: var(--gs-surface);
+  --color-surface-2: var(--gs-surface-2);
+  --color-border: var(--gs-border);
+  --color-border-strong: var(--gs-border-strong);
+  --color-fg: var(--gs-text);
+  --color-muted: var(--gs-text-muted);
+  --color-dim: var(--gs-text-dim);
+  --color-accent: var(--gs-accent);
+  --color-beta: var(--gs-beta);
+  --color-ok: var(--gs-ok);
+  --color-error: var(--gs-error);
+  --color-warn: var(--gs-warn);
+  --color-transparent: transparent;
+
+  --font-*: initial;
+  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --text-*: initial;
+  --text-12: 12px;
+  --text-12--line-height: 16px;
+  --text-13: 13px;
+  --text-13--line-height: 20px;
+  --text-14: 14px;
+  --text-14--line-height: 20px;
+  --text-16: 16px;
+  --text-16--line-height: 24px;
+  --text-20: 20px;
+  --text-20--line-height: 28px;
+  --text-28: 28px;
+  --text-28--line-height: 34px;
+  --text-44: 44px;
+  --text-44--line-height: 48px;
+  --text-64: 64px;
+  --text-64--line-height: 64px;
+
+  --font-weight-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  --radius-*: initial;
+  --radius-control: 6px;
+  --radius-input: 8px;
+  --radius-panel: 12px;
+  --radius-full: 9999px;
+
+  --shadow-*: initial;
+  /* Overlays only (menus, dialogs, palettes): design.md §6.1. */
+  --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5), 0 0 0 1px var(--gs-border-strong);
+}
+
+html {
+  background: var(--gs-bg);
+}
+
+body {
+  background: var(--gs-bg);
+  color: var(--gs-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--gs-text);
+    outline-offset: 2px;
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--gs-border);
+  }
+
+  .lucide {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.75;
+    flex-shrink: 0;
+  }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes gs-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton {
+  background: var(--gs-surface);
+  border-radius: var(--radius-control);
+  animation: gs-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* Landing hero ship (design.md §6.1 motion moments). */
+@keyframes gs-sail {
+  from {
+    transform: translateX(-60px);
+  }
+  to {
+    transform: translateX(calc(100cqw + 10px));
+  }
+}
+
+@keyframes gs-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-2deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(2deg);
+  }
+}
+
+@keyframes gs-waves {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.gs-sail {
+  animation: gs-sail 14s linear infinite;
+}
+
+.gs-bob {
+  animation: gs-bob 2.4s ease-in-out infinite;
+}
+
+.gs-waves {
+  animation: gs-waves 6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-sail,
+  .gs-bob,
+  .gs-waves {
+    animation: none;
+  }
+
+  .gs-sail {
+    left: calc(50% - 22px);
+  }
+}
+
+@keyframes gs-flow {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+@keyframes gs-ring {
+  from {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.18);
+  }
+}
+
+.gs-flow {
+  animation: gs-flow 0.9s linear infinite;
+}
+
+.gs-ring {
+  animation: gs-ring 0.8s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-flow,
+  .gs-ring {
+    animation: none;
+  }
+}
+
+@keyframes gs-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.gs-progress {
+  animation: gs-progress linear forwards;
+}
+
+@keyframes gs-packet {
+  from {
+    left: 0;
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  to {
+    left: calc(100% - 7px);
+    opacity: 1;
+  }
+}
+
+.gs-packet {
+  animation: gs-packet 0.7s ease-in-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-packet,
+  .gs-progress {
+    animation: none;
+  }
+}
+
+/* Landing page sea (decisions.md 036): one fixed wireframe ocean behind the whole page, with a slow swell. */
+@keyframes gs-swell {
+  0%,
+  100% {
+    transform: translateY(0) scale(1.04);
+  }
+  50% {
+    transform: translateY(-1.5%) scale(1.06);
+  }
+}
+
+.gs-swell {
+  animation: gs-swell 16s ease-in-out infinite;
+  transform-origin: 50% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-swell {
+    animation: none;
+  }
+}
+

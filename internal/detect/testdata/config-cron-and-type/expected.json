@@ -1,0 +1,23 @@
+{
+  "services": [
+    {
+      "name": "admin",
+      "path": "./cmd/admin",
+      "type": "web",
+      "reason": "greyship.toml"
+    },
+    {
+      "name": "api",
+      "path": "./cmd/api",
+      "type": "web"
+    },
+    {
+      "name": "cleanup",
+      "path": "./cmd/cleanup",
+      "type": "cron",
+      "reason": "greyship.toml",
+      "schedule": "0 3 * * *"
+    }
+  ],
+  "project": "acme"
+}

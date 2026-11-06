@@ -1,0 +1,15 @@
+{
+  "services": [
+    {
+      "name": "api",
+      "path": "./cmd/api",
+      "type": "web"
+    },
+    {
+      "name": "worker",
+      "path": "./cmd/worker",
+      "type": "worker"
+    }
+  ],
+  "project": "acme"
+}

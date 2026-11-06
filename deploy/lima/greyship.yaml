@@ -1,0 +1,36 @@
+# Linux VM for build sandboxes on a Mac (decisions.md 024, 030): Docker with gVisor (runsc), nothing else.
+# Create or start it with `make sandbox`. Your home folder is not mounted: builds see only what they're given.
+minimumLimaVersion: 1.0.0
+base: template://ubuntu-24.04
+cpus: 4
+memory: 4GiB
+disk: 20GiB
+mounts: []
+containerd:
+  system: false
+  user: false
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      if command -v docker >/dev/null && command -v runsc >/dev/null; then exit 0; fi
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y ca-certificates curl gnupg docker.io
+      curl -fsSL https://gvisor.dev/archive.key | gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" > /etc/apt/sources.list.d/gvisor.list
+      apt-get update
+      apt-get install -y runsc
+      runsc install
+      systemctl restart docker
+      chmod 666 /var/run/docker.sock
+probes:
+  - script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      timeout 300s bash -c 'until docker info 2>/dev/null | grep -q runsc; do sleep 3; done'
+    hint: Docker with runsc isn't ready yet; see /var/log/cloud-init-output.log in the VM.
+portForwards:
+  - guestSocket: /var/run/docker.sock
+    hostSocket: "{{.Dir}}/sock/docker.sock"

@@ -1,0 +1,20 @@
+{
+  "services": [
+    {
+      "name": "billing",
+      "path": "./apps/billing",
+      "type": "worker"
+    },
+    {
+      "name": "orders-server",
+      "path": "./services/orders/cmd/server",
+      "type": "web"
+    },
+    {
+      "name": "payments-server",
+      "path": "./services/payments/cmd/server",
+      "type": "web"
+    }
+  ],
+  "project": "acme"
+}

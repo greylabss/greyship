@@ -1,0 +1,71 @@
+---
+title: Quickstart
+description: Install grey, log in, and deploy a Go backend.
+---
+
+## 1. Install the CLI
+
+```sh
+curl -fsSL https://greyship.tech/install | sh
+```
+
+macOS and Linux (Intel and ARM). On Windows, run it inside WSL. See [Installation](/installation) for details.
+
+## 2. Log in
+
+```sh
+grey login
+```
+
+Your browser opens; approve the device and you're in. On an invite-only Greyship (our hosted beta, or a self-hosted one) your email must be invited first.
+
+## 3. Deploy
+
+In any Go project (a folder with a `go.mod`):
+
+```sh
+grey deploy
+```
+
+```text
+Created project you/shop
+
+  api     web     ./cmd/api     starts a server in cmd/api/main.go:22 (http.ListenAndServe)
+  worker  worker  ./cmd/worker  no server start found from main()
+
+Building here with go1.27.3 for linux/amd64
+Uploaded 2 binaries (9.1 MB)
+
+Deployment 5ee10af0-… queued:
+  │ checked api: Go 1.27.3, linux/amd64 (8.1 MB)
+  │ starting api on eu-1
+  │ starting worker on eu-1
+  │ live
+
+✓ Live
+  api     https://api-shop.greyshipapp.tech
+  worker  (worker, no URL)
+```
+
+The first deploy creates the project, named after your module (`github.com/you/shop` → `shop`), and writes
+`.greyship/project.json` so later deploys know where to go. It's safe to commit.
+
+## 4. Watch it run
+
+```sh
+grey logs -f
+```
+
+Open the URL; the first request after a while wakes the service. Then open the dashboard at
+[greyship.tech](https://greyship.tech) to see deployments, logs and env vars.
+
+## Next
+
+- Add environment variables: [Environment variables](/environment-variables)
+- Deploy on every push: [Deploy from GitHub](/github)
+- Something failed? [Troubleshooting](/troubleshooting)
+
+<Callout title="No Go installed?">
+That's fine: `grey deploy` uploads your source and Greyship builds it. With Go installed, deploys are faster and don't
+use [build minutes](/limits#build-minutes).
+</Callout>

@@ -1,0 +1,2 @@
+[services.jobs]
+path = "./cmd"

@@ -1,0 +1,10 @@
+{
+  "services": [
+    {
+      "name": "api",
+      "path": "./cmd/api",
+      "type": "web"
+    }
+  ],
+  "project": "acme"
+}

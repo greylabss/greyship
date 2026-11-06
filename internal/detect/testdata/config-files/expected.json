@@ -1,0 +1,11 @@
+{
+  "services": [
+    {
+      "name": "api",
+      "path": "./cmd/api",
+      "type": "web"
+    }
+  ],
+  "files": ["templates/", "scripts/install.sh"],
+  "project": "acme"
+}

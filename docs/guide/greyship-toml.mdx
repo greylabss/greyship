@@ -1,0 +1,112 @@
+---
+title: greyship.toml
+description: The optional config file. Most projects never need one.
+---
+
+Greyship works with **no config**: it [finds your services](/services) by reading your code. `greyship.toml` is for
+the few things that can't be inferred and for overrides. It's never created for you.
+
+## Where it goes
+
+At the root of your project, next to `go.mod`. A `greyship.toml` in a subfolder is ignored.
+
+```text
+myapp/
+├── go.mod
+├── greyship.toml   ← here
+├── cmd/
+│   ├── api/main.go
+│   └── migrate/main.go
+└── templates/
+```
+
+## A full example
+
+```toml
+# Top-level settings come first, before any [section].
+files = ["templates/", "scripts/install.sh"]
+
+[services.api]
+path = "./cmd/api"
+
+[services.orders]
+path = "./services/orders"   # a main package outside cmd/
+
+[services.consumer]
+type = "worker"              # detection said web; it isn't
+
+[services.tools]
+exclude = true               # don't deploy this main
+
+[services.cleanup]
+type = "cron"
+schedule = "0 3 * * *"
+
+[release]
+command = "./cmd/migrate"
+```
+
+Unknown settings are errors, so a typo never deploys silently:
+
+```text
+greyship.toml has an unknown setting: services.api.memroy
+```
+
+## Top-level settings
+
+### `files`
+
+Repo files and folders to ship next to every service's binary, at the same paths. See
+[Runtime files](/runtime-files).
+
+```toml
+files = ["templates/", "static/", "scripts/install.sh"]
+```
+
+It must come before any `[section]`; inside one, TOML reads it as part of that section and the deploy says so.
+
+## `[services.<name>]`
+
+`<name>` is the service's name: lowercase letters, digits and dashes, starting with a letter. A name that matches a
+detected service changes it; a new name needs a `path`.
+
+| Setting | Type | What it does |
+| --- | --- | --- |
+| `path` | string | The folder of the service's `main` package, like `"./cmd/api"`. Renames a detected service, or includes a `main` that detection skipped. |
+| `type` | `"web"`, `"worker"` or `"cron"` | Overrides the detected type. |
+| `schedule` | string | Cron schedule for `type = "cron"`: five fields, minute hour day-of-month month day-of-week, UTC. Required for crons, refused for others. |
+| `exclude` | bool | `true` leaves the service out of deploys. |
+
+These are accepted and checked today, and take effect when their feature ships. You can write them now; they're
+listed so your file won't need changing:
+
+| Setting | Planned meaning |
+| --- | --- |
+| `memory` | memory per instance, e.g. `"256MB"` (Free: 128MB) |
+| `cpu` | CPU per instance, up to `1` |
+| `min_instances` | instances kept running even with no traffic (paid plans; billed 24/7) |
+| `max_instances` | most instances under load (Free: 2) |
+| `concurrency` | in-flight requests per instance before another starts (default 100) |
+| `grace` | how long an idle instance stays up before pausing (default `"30s"`) |
+| `health_path` | a path that must answer 200 before a deploy goes live |
+| `region` | where the service runs |
+| `visibility` | `"private"`: reachable only by the project's other services |
+| `protocol` | `"h2c"` for gRPC / Connect without TLS |
+
+## `[release]`
+
+The [release command](/services#release-command), run once per deploy before traffic switches.
+
+| Setting | Type | What it does |
+| --- | --- | --- |
+| `command` | string | Folder of a `main` package, like `"./cmd/migrate"`. Without it, `cmd/migrate` is used if it exists. |
+| `timeout` | string | Accepted; today a release command may run for up to 12 minutes. |
+
+## `[[routes]]`
+
+Accepted for path routing on one domain (`domain`, `path`, `service`). **Coming soon** with custom domains.
+
+## Ignore files
+
+`.greyshipignore` works like `.gitignore` and adds to it: files listed there are never uploaded or
+[shipped](/runtime-files), even if git tracks them.

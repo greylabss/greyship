@@ -1,0 +1,13 @@
+{
+  "services": [
+    {
+      "name": "acme",
+      "path": ".",
+      "type": "web"
+    }
+  ],
+  "skipped": [
+    "./tools/lint"
+  ],
+  "project": "acme"
+}

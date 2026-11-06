@@ -1,0 +1,11 @@
+{
+  "services": [
+    {
+      "name": "rpc",
+      "path": "./cmd/rpc",
+      "type": "web",
+      "reason": "net.Listen"
+    }
+  ],
+  "project": "acme"
+}

@@ -1,0 +1,31 @@
+---
+title: Logs
+description: See what your services print, live.
+---
+
+Everything your services print to stdout and stderr is collected.
+
+```sh
+grey logs                  # the last 100 lines of every service
+grey logs -f               # keep streaming new lines
+grey logs --service api    # one service
+grey logs -n 500           # more history
+```
+
+```text
+03:16:07 api │ 2026/11/05 02:16:07 listening on :3000
+03:16:08 api │ greyship: api listens on port 3000; serving it on its URL
+```
+
+JSON log lines (for example from `log/slog`'s JSON handler) are shown as `LEVEL message key=value`. In the dashboard,
+**Logs** shows the same, with filters by service and level and a live mode.
+
+- Logs are kept for **1 day** on Free.
+- A service printing more than 1,000 lines a second has the extra lines counted and replaced by one note, so one noisy
+  app can't drown the rest.
+- Lines longer than 4 KB are cut.
+
+## Build and deploy logs
+
+Every deployment has its own log: detection, the build, the release command, instances starting, and why it failed if
+it did. `grey deploy` streams it; the dashboard keeps it on the deployment's page.

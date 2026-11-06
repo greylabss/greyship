@@ -1,0 +1,67 @@
+---
+title: Environment variables
+description: Set secrets and config for your services, from the CLI or the dashboard.
+---
+
+Env vars are stored encrypted, per project. Every service in the project gets them, together with the
+[ones Greyship sets](/services#every-instance-gets). Values are never shown again after you save them: the dashboard
+and `grey env ls` list names only.
+
+## From the CLI
+
+```sh
+grey env set DATABASE_URL=postgres://… STRIPE_KEY=sk_live_…
+grey env ls
+grey env rm STRIPE_KEY
+grey env push            # load a whole file, .env.prod by default
+grey env pull            # download the stored values into .env.prod
+```
+
+Setting or removing a variable **restarts the services that use it** with the new values; nothing is rebuilt.
+
+`grey env pull` is the only command that downloads secrets, and it asks before overwriting `.env.prod`.
+
+## .env.prod and grey deploy
+
+Keep production values in `.env.prod` (and keep it out of git). On every `grey deploy`, grey compares it with the
+stored variables and shows a key-only diff before anything changes:
+
+```text
+.env.prod vs production:
+  + NEW_FLAG        only in file → will be added
+  ~ STRIPE_KEY      different    → will be updated
+  = 12 keys match
+  · SENTRY_DSN      only stored  → kept
+Continue? [y/N]
+```
+
+- Keys only in the file are added; changed keys are updated.
+- Keys only stored are kept. `grey deploy --prune` removes them.
+- It only asks when something would change. `--yes` skips the question (CI).
+- If `.env.prod` is tracked by git, grey warns loudly.
+
+The stored variables are the source of truth: GitHub deploys use them and never read `.env` files from the repository.
+
+## In the dashboard
+
+Project → **Env**: add or change a variable, remove one, or **paste a whole `.env` file**. It's parsed with exactly the
+rules `grey deploy` uses: comments, `export`, quotes, multi-line values.
+
+## File format
+
+```sh
+# comments are fine
+DATABASE_URL=postgres://user:pass@host/db
+export GREETING="hello world"   # export and quotes are fine
+PRIVATE_KEY="-----BEGIN KEY-----
+abc
+-----END KEY-----"
+```
+
+Names are letters, digits and `_`, and can't start with a digit. `PORT` and names starting with `GREYSHIP_` are
+reserved.
+
+## Coming soon
+
+- Values for preview deployments (`--env preview` already stores them).
+- Per-service overrides and exclusions in the dashboard.

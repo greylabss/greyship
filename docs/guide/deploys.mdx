@@ -1,0 +1,89 @@
+---
+title: How deploys work
+description: What happens between grey deploy and "Live", and what happens when something fails.
+---
+
+## Two ways to build
+
+`grey deploy` picks one for you:
+
+| | On your machine | On Greyship |
+| --- | --- | --- |
+| When | Go is installed (the default) | Go isn't installed, `grey deploy --remote`, and every GitHub deploy |
+| What's uploaded | only the binaries the project doesn't have yet | your source, packed |
+| Speed | fastest: an unchanged service isn't uploaded again | a build machine compiles it (seconds to a few minutes) |
+| [Build minutes](/limits#build-minutes) | free, never counted | counted |
+
+**On your machine**, grey compiles each service for Greyship's Linux CPU:
+
+```sh
+CGO_ENABLED=0 GOOS=linux GOARCH=<server cpu> go build -trimpath -ldflags="-s -w"
+```
+
+A compile error stops the deploy before anything is sent. `go vet` runs at the same time; its warnings are printed
+but never block the deploy. Greyship then checks every binary: it must be a static Linux binary for the right CPU,
+built with `-trimpath`, matching the checksum grey declared.
+
+**On Greyship**, grey packs the folder and uploads it. It honours `.gitignore` and `.greyshipignore`, and never
+uploads `.git`, `node_modules`, symlinks or any `.env` / `.env.*` file, whatever the ignore files say. The compressed
+source can be at most 100 MB; above that grey lists the biggest files. Modules come from the public Go module proxy,
+checked against the Go checksum database. **Private modules aren't supported yet.**
+
+<Callout type="warn" title="cgo is off">
+Every binary is built with `CGO_ENABLED=0`, so packages that need a C compiler (for example `mattn/go-sqlite3`)
+don't build. Use a pure-Go alternative (`modernc.org/sqlite`, `github.com/jackc/pgx`).
+</Callout>
+
+## The steps
+
+1. **Detect.** Greyship reads your code and lists the [services](/services) it found and why. Nothing is run.
+2. **Env vars.** If you have a `.env.prod`, grey compares it with the stored variables and shows a key-only diff
+   before anything changes. See [Environment variables](/environment-variables).
+3. **Build or upload**, as above.
+4. **Release command.** If the project has one (for example `cmd/migrate`), it runs once, before any traffic
+   switches. See [Release command](/services#release-command).
+5. **Start and check.** Every service starts on fresh instances. A web service must start listening for connections
+   within 30 seconds (on any port, see [Ports](/ports)); a worker must still be running after a few seconds.
+6. **Switch.** Only when every service is healthy does traffic move to the new version, all at once. The previous
+   version's instances then stop.
+
+`grey deploy` follows all of it live and ends with `✓ Live` and the URLs. The dashboard shows the same log.
+
+## All or nothing
+
+A deployment covers every service in the project together. If one service fails its health check, **nothing
+switches**: the deployment is marked failed and the live version keeps serving every service. This keeps services
+that depend on each other (sharing a database schema, calling each other) on the same version.
+
+The log says exactly what visitors get:
+
+```text
+  │ deploy failed: api didn't start on eu-1: health check failed: the app exited with code 1 before it started listening
+  │ nothing changed: the live version (deployment d7685c76) keeps serving
+```
+
+The app's last output lines appear just above, so you usually see the cause right there (a missing env var, a panic).
+
+## Projects and the link file
+
+The first `grey deploy` (or `grey init`) in a folder creates the project and writes `.greyship/project.json` next to
+`go.mod`:
+
+```json
+{ "team": "you", "project": "shop", "id": "…" }
+```
+
+It holds no secrets; commit it so teammates and CI deploy to the same project. The project name comes from the last
+part of your module path (`github.com/acme/orders-api` → `orders-api`, a `/v2` suffix is dropped), lowercased with
+dashes. Use `grey init --name …` to pick another before the first deploy. If the name is taken in your team, grey asks
+whether to deploy to the existing project.
+
+## Build limits
+
+| | Free (beta) |
+| --- | --- |
+| Source upload (compressed) | 100 MB |
+| Binaries per deploy | 20, each up to 200 MB (100 MB compressed) |
+| Server build time | 10 minutes |
+
+More in [Limits](/limits).

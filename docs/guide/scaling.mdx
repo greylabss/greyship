@@ -1,0 +1,39 @@
+---
+title: Scaling and sleeping
+description: Services wake on requests, scale up under load and sleep when idle.
+---
+
+## Scale to zero
+
+A web service with no requests stays up for a **grace window** (30 seconds), then **pauses**. A paused service costs
+nothing. It stays in memory, so the next request **wakes it in milliseconds**; that request is simply held until the
+instance is back, then answered.
+
+After **24 hours** without requests, a paused instance is stopped. The next request then starts a fresh one: a
+**cold start**, typically well under a second for a Go binary.
+
+Requests are held for up to 30 seconds while a service wakes or starts.
+
+## Scaling up
+
+One instance handles up to **100 requests at a time**. Beyond that, Greyship starts another instance, up to the
+service's maximum (**2** on Free during the beta). Each new instance also goes back to sleep when traffic drops.
+
+Each instance gets **128 MB** of memory and up to **1 CPU** on Free. `GOMAXPROCS` and `GOMEMLIMIT` are set to match,
+so Go's scheduler and garbage collector work within the limits.
+
+## Workers
+
+[Workers](/services#web-or-worker) keep running while deployed during the beta. Waking them only when there's work (a
+built-in queue, schedules) is coming soon.
+
+## What keeps an instance awake
+
+- Requests in flight, including long responses.
+- **Open WebSockets**: an open connection keeps its instance awake.
+- Workers, during the beta.
+
+## Restarts
+
+Changing an env var restarts the services that use it, one fresh instance at a time, each health-checked before the
+old one stops. A deploy or rollback starts new instances before stopping the old ones. Either way there's no downtime.

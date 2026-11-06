@@ -1,0 +1,11 @@
+{
+  "services": [
+    {
+      "name": "acme",
+      "path": ".",
+      "type": "web",
+      "reason": "http.ListenAndServe"
+    }
+  ],
+  "project": "acme"
+}

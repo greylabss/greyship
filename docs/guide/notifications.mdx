@@ -1,0 +1,46 @@
+---
+title: Notifications
+description: Hear when a deploy succeeds or fails, by email, in the dashboard and on your phone.
+---
+
+Greyship tells you when:
+
+| Event | Example |
+| --- | --- |
+| a deploy succeeds | **shop is live**: Deployment 5ee10af0 (commit 65569fb) is live after 8s. |
+| a deploy fails | **shop: deploy failed**: Deployment 94a8dccc failed: build failed: go build failed (exit status 1). Nothing changed: the live version keeps serving. |
+| a project is created | **New project shop**: shop was created in acme from github.com/acme/shop. |
+
+You're told about deploys **you** start (CLI, dashboard, redeploys, rollbacks; for a push to GitHub, whoever
+connected GitHub for the team) and projects you create.
+
+## Where they arrive
+
+- **The bell** in the dashboard: newest first, with an unread dot. Click one to open the deployment.
+- **Email**, with a link to the dashboard page.
+- **Browser push**: a notification on your computer or phone, even with the dashboard closed.
+
+Messages never contain secrets, env var values or app output, only the one-line reason a deploy failed.
+
+## Turn on browser push
+
+Dashboard → **Settings > Notifications** → **Turn on**, and allow notifications when the browser asks. Do it once in
+each browser you want them in.
+
+- Works in Chrome, Edge, Firefox and Safari on desktop, and on Android.
+- On **iPhone and iPad**, add Greyship to your home screen first (Share → Add to Home Screen), open it from there, then
+  turn notifications on.
+- Blocked by mistake? Allow notifications for `greyship.tech` in the browser's site settings, then click **Turn on**
+  again.
+
+## Choose what you get
+
+Settings > Notifications has an email and a push switch for each event. Everything is on by default; the bell always
+keeps the entry. From the CLI:
+
+```sh
+grey notifications                                   # show the settings
+grey notifications email off deploy.succeeded        # no email for successful deploys
+grey notifications push off                          # no push at all
+grey notifications email on                          # every email back on
+```

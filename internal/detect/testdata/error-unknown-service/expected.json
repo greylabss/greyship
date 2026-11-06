@@ -1,0 +1,4 @@
+{
+  "error": "[services.payments] doesn't match a detected service",
+  "project": "acme"
+}

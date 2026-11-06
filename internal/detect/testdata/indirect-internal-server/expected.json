@@ -1,0 +1,11 @@
+{
+  "services": [
+    {
+      "name": "api",
+      "path": "./cmd/api",
+      "type": "web",
+      "reason": "internal/httpserver/server.go"
+    }
+  ],
+  "project": "acme"
+}

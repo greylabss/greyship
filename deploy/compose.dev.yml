@@ -1,0 +1,36 @@
+# Local infrastructure for `make dev`. Port 5434 so it never clashes with beta/ (5433) or a system Postgres.
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: greyship
+      POSTGRES_PASSWORD: greyship
+      POSTGRES_DB: greyship
+    ports:
+      - "5434:5432"
+    volumes:
+      - greyship-pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U greyship"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  # S3-compatible storage for source tarballs and binaries (decisions.md 029). make infra creates the
+  # buckets and the dev access key with deploy/garage-init.sh.
+  garage:
+    image: dxflrs/garage:v2.4.1
+    ports:
+      - "3900:3900"
+    volumes:
+      - ./garage.toml:/etc/garage.toml:ro
+      - greyship-garage:/var/lib/garage
+    healthcheck:
+      test: ["CMD", "/garage", "status"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  greyship-pg:
+  greyship-garage:

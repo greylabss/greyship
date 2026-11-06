@@ -1,0 +1,96 @@
+---
+title: Services
+description: How Greyship finds your services and decides what each one is.
+---
+
+A **service** is one `main` package in your module. Greyship finds them by reading your code at deploy time, with
+no config. Every deploy prints what it found and why:
+
+```text
+  api      web     ./cmd/api      starts a server in cmd/api/main.go:22 (http.ListenAndServe)
+  worker   worker  ./cmd/worker   no server start found from main()
+  release  once    ./cmd/migrate  cmd/migrate is the release command
+```
+
+## Where services come from
+
+| Where the `main` package is | Result |
+| --- | --- |
+| the module root (`main.go`) or `cmd/main.go` | one service, named after the project |
+| `cmd/<name>/` | a service named `<name>` |
+| anywhere else (`services/orders/`, `apps/billing/cmd/server/`) | named after its folder; if two would share a name, the nearest meaningful parent is added (`orders-server`, `payments-server`) |
+| `cmd/migrate/` | the [release command](#release-command), not a service |
+| `vendor/`, `testdata/`, `examples/`, folders starting with `_` or `.`, files excluded from a Linux build, mains only run by `//go:generate` | skipped, with the reason printed |
+| a folder with its own `go.mod` | skipped (multi-module repos are coming) |
+
+`go.mod` must be at the root of what you deploy. Service names are lowercase with dashes and unique within the
+project; rename or include anything with [`greyship.toml`](/greyship-toml#services).
+
+## Web or worker
+
+Greyship follows each `main()` through your own packages and looks for a server being started:
+`http.ListenAndServe`, `net.Listen`, or a framework's equivalent (gin `Run`, echo `Start`, fiber `Listen`, gRPC
+`Serve`, fasthttp, hertz, Connect).
+
+- Found one → **web**: it gets a public HTTPS URL and [sleeps when idle](/scaling).
+- None → **worker**: it runs in the background with no URL.
+
+Detection is wrong for your project? Set the type in `greyship.toml`:
+
+```toml
+[services.consumer]
+type = "worker"
+```
+
+<Callout title="Workers during the beta">
+Workers keep running while deployed. Waking them on events (a built-in queue, schedules) is coming soon.
+</Callout>
+
+## Crons
+
+A cron is never guessed, because in code it looks just like a worker. Declare it:
+
+```toml
+[services.cleanup]
+type = "cron"
+schedule = "0 3 * * *"   # standard 5-field cron, UTC
+```
+
+The schedule is checked on every deploy. **Running crons on their schedule is coming soon**; until then a cron
+service is deployed but not started.
+
+## Release command
+
+A release command runs **once per deploy, before traffic switches**: database migrations, one-off setup. It's
+`cmd/migrate` if you have one, or any main package you set:
+
+```toml
+[release]
+command = "./cmd/migrate"
+```
+
+- It runs in the same sandbox, with the same env vars, as your services.
+- Exit code 0 → the deploy continues. Anything else → the deployment fails, its output is in the log, and the live
+  version keeps serving.
+- [Rollbacks and redeploys](/rollbacks) don't run it again.
+
+<Callout type="warn" title="Migrations and rollbacks">
+A rollback doesn't undo a migration. Write migrations that the previous version can live with: add a column, deploy
+the code that uses it, and remove old columns in a later deploy (expand, then contract).
+</Callout>
+
+## Every instance gets
+
+| Variable | Value |
+| --- | --- |
+| `PORT` | `8080` (reading it is optional, see [Ports](/ports)) |
+| `GREYSHIP_SERVICE` | the service's name |
+| `GREYSHIP_DEPLOYMENT_ID` | the deployment it belongs to |
+| `GREYSHIP_REGION` | where it runs, e.g. `eu-1` |
+| `GOMAXPROCS` | the CPU limit, rounded up |
+| `GOMEMLIMIT` | 90% of the memory limit, so Go's GC works before the limit is hit |
+
+Plus your [environment variables](/environment-variables). `PORT` and `GREYSHIP_*` can't be overridden;
+`GOMAXPROCS` and `GOMEMLIMIT` can.
+
+On stop, an instance gets `SIGTERM` and has 10 seconds to finish before `SIGKILL`.

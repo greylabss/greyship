@@ -1,0 +1,67 @@
+---
+title: Troubleshooting
+description: The errors you're most likely to see, what they mean and how to fix them.
+---
+
+When a deploy fails, the log ends with the reason and `nothing changed: …`: the live version (if any) is untouched.
+The app's last output lines are printed just above the reason; start there.
+
+## The app exits before it starts listening
+
+```text
+deploy failed: api didn't start on eu-1: health check failed: the app exited with code 1 before it started listening
+```
+
+Your code exited during startup. The lines above it show why. The usual causes:
+
+- **A missing env var**: `log.Fatal("DATABASE_URL is required")`. Add it with `grey env set` or in the dashboard
+  (Env), then deploy again or `grey redeploy`.
+- **A file it opens isn't there**: `open scripts/install.sh: no such file or directory`. Only the binary is shipped;
+  see [Runtime files](/runtime-files).
+- **It can't reach a database** that only allows certain IPs. Allow connections from anywhere with TLS and a strong
+  password, or use a provider with public access (Neon, Supabase, PlanetScale).
+
+## Nothing listens
+
+```text
+the app didn't start listening on any port within 30s; a web service must accept connections (any port works)
+```
+
+It's still running but never opened a port: stuck before `ListenAndServe` (a connection that never times out, for
+example), or it's not meant to serve. Add timeouts to startup calls, or make it a [worker](/services#web-or-worker).
+
+## Build failures
+
+| Message | Fix |
+| --- | --- |
+| `go build failed (exit status 1)` | It doesn't compile for Linux; the errors are in the log. Try `GOOS=linux CGO_ENABLED=0 go build ./...` locally. |
+| an import needing cgo (e.g. `mattn/go-sqlite3`) | cgo is off. Use a pure-Go package such as `modernc.org/sqlite`. |
+| a private module can't be downloaded | Private modules aren't supported yet. Vendor it (`go mod vendor`) or deploy with Go installed. |
+| `the build took longer than the limit` | Builds on Greyship stop at 10 minutes. Install Go and deploy from your machine. |
+| `…free build minutes are used up until …` | Install Go: `grey deploy` then builds on your machine, which is free. |
+| `api was built for darwin/arm64; Greyship runs linux/amd64` | Something overrode `GOOS`/`GOARCH`. Unset them; grey sets them itself. |
+
+## Detection
+
+| Message | Fix |
+| --- | --- |
+| `no go.mod at the repo root` | Deploy from the folder that has `go.mod`, or run `go mod init`. |
+| `no services found` | Add a `main` package, e.g. `cmd/api/main.go`. |
+| a service is `worker` but serves HTTP | Its server start wasn't recognized. Set `type = "web"` in [`greyship.toml`](/greyship-toml) and tell us which framework it is. |
+| `greyship.toml has an unknown setting: …` | A typo, or a setting in the wrong section. See the [reference](/greyship-toml). |
+| `greyship.toml has files inside [services.api]` | Move `files = [...]` to the top of the file. |
+| `greyship.toml lists "static/" in files, but there's no such file or folder` | Check the path, and that it isn't ignored by `.gitignore`. |
+
+## CLI and login
+
+| Message | Fix |
+| --- | --- |
+| `you're not logged in (or the token was revoked). Run: grey login` | Log in again. Tokens revoked in **Settings > API tokens** stop working at once. |
+| `This email isn't invited to this Greyship yet.` | Ask the owner of the Greyship you're using to add you. On our hosted beta, sign in with the email you applied with, or apply at [forms.greyship.tech](https://forms.greyship.tech). |
+| `We couldn't check the invite list just now.` | Try again in a minute. |
+| `grey: command not found` | The install folder isn't on your `PATH`; the installer printed the line to add. |
+
+## Still stuck?
+
+Send us the **deployment id** (in the URL of the deployment page, or `Deployment 5ee10af0… queued` in the CLI). It's
+everything we need to find the exact build and its logs.

@@ -1,0 +1,16 @@
+{
+  "services": [
+    {
+      "name": "acme",
+      "path": ".",
+      "type": "web"
+    }
+  ],
+  "skipped": [
+    "./.github/tool",
+    "./_scripts/seed",
+    "./examples/demo",
+    "./internal/thing/testdata/fake"
+  ],
+  "project": "acme"
+}

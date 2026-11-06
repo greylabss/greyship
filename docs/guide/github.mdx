@@ -1,0 +1,52 @@
+---
+title: Deploy from GitHub
+description: Import a repository in the dashboard; pushes deploy automatically.
+---
+
+You don't need the CLI or Go installed to deploy from GitHub.
+
+## Import a repository
+
+1. In the dashboard, click **New project**.
+2. Either **install the Greyship GitHub app** and pick a repository, or **paste a public repository's link**
+   (`https://github.com/owner/repo`, optionally `/tree/<branch>`).
+3. Greyship creates the project and shows a **review page** before anything deploys: every service it found, its type
+   and why, the release command, skipped folders, or the problem that would stop a deploy.
+4. Set your env vars there. Names from the repo's `.env.example` are suggested; you can paste a whole `.env` file.
+5. Click **Deploy**.
+
+## App-connected vs public link
+
+| | GitHub app | Public link |
+| --- | --- | --- |
+| Private repos | yes | no |
+| Deploys on push | yes, to the connected branch | no: click **Deploy latest** (or `grey github deploy`) |
+| Commit status on GitHub | yes (pending, then ✓ or ✗, linking to the deployment) | no |
+| Setup | install the app once per GitHub account or org | nothing |
+
+## Push to deploy
+
+With the app, every push to the connected branch (the repository's default branch unless you chose another) deploys
+to production. GitHub deploys are [built on Greyship](/deploys#two-ways-to-build) and use the project's **stored** env
+vars: `.env` files in the repository are never read.
+
+Every GitHub-connected project has **Deploy latest**, which deploys the branch's newest commit. A commit that's already
+live or deploying isn't deployed twice; one whose deploy failed can be deployed again, for example after you add a
+missing env var.
+
+## From the CLI
+
+```sh
+grey github install                       # opens the page that installs the app for your team
+grey github repos                         # repositories the app can read
+grey github connect acme/shop             # pushes to the default branch deploy this folder's project
+grey github connect acme/shop --branch prod
+grey github import https://github.com/acme/public-api   # a public repo by link, deployed at once
+grey github deploy                        # deploy the connected branch's latest commit
+```
+
+## Coming soon
+
+- A preview deployment with its own URL for every pull request.
+- Choosing any branch to deploy from the dashboard.
+- Submodules (GitHub's archives don't include them).

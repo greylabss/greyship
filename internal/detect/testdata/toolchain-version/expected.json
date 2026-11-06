@@ -1,0 +1,11 @@
+{
+  "go": "1.23.4",
+  "services": [
+    {
+      "name": "acme",
+      "path": ".",
+      "type": "worker"
+    }
+  ],
+  "project": "acme"
+}

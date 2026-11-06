@@ -1,0 +1,10 @@
+{
+  "services": [
+    {
+      "name": "poller",
+      "path": "./cmd/poller",
+      "type": "worker"
+    }
+  ],
+  "project": "acme"
+}

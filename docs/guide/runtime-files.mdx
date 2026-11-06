@@ -1,0 +1,86 @@
+---
+title: Runtime files
+description: Ship templates, scripts and other repo files next to your binary.
+---
+
+By default a running service has **only its binary**: none of your repo's other files are on the server. Code that
+opens a repo file while running works locally and fails on Greyship:
+
+```text
+read install.sh: open scripts/install.sh: no such file or directory
+```
+
+You have two ways to fix it.
+
+## Option 1: list the files in greyship.toml
+
+```toml
+files = ["templates/", "static/", "scripts/install.sh"]
+```
+
+Every service in the project then gets those files at the **same paths as in your repo**, read-only, in its working
+folder. Your code doesn't change:
+
+```go
+tmpl := template.Must(template.ParseGlob("templates/*.html"))
+script, _ := os.ReadFile("scripts/install.sh")
+http.Handle("/static/", http.FileServer(http.Dir("static")))
+```
+
+Rules:
+
+- Put `files` at the **top** of `greyship.toml`, before any `[section]`. Inside a section it means something else, and
+  the deploy tells you to move it.
+- Entries are files or folders inside the repo: no `..`, no absolute paths, no wildcards. A folder includes everything
+  under it. At most 100 entries.
+- The same rules as for source uploads apply: ignored files (`.gitignore`, `.greyshipignore`), `.git`, `.env` files and
+  symlinks are never shipped.
+- An entry that matches nothing fails the deploy, naming it, so a typo never deploys silently.
+- At most **50 MB** and **5,000 files** in total.
+- The files are read-only. To write, use `/tmp` (up to 64 MB, emptied when the instance restarts), a database or object
+  storage.
+
+The deploy shows what's shipped:
+
+```text
+Files: templates/ (12 files), scripts/install.sh · 340 KB
+```
+
+With Go installed, they're uploaded only when they change. [Rollbacks](/rollbacks) bring back that deployment's files.
+
+## Option 2: embed them in the binary
+
+Go can build files into the binary with `//go:embed`; then nothing needs shipping:
+
+```go
+import "embed"
+
+//go:embed templates
+var templates embed.FS
+
+tmpl := template.Must(template.ParseFS(templates, "templates/*.html"))
+```
+
+`//go:embed` can't reach upward (`../`). For a file elsewhere in the repo, put a tiny package next to it:
+
+```go
+// scripts/scripts.go
+package scripts
+
+import _ "embed"
+
+//go:embed install.sh
+var Install []byte
+```
+
+## The warning
+
+When your code reads a repo path at runtime that isn't shipped, the deploy warns (it never fails):
+
+```text
+warning: cmd/install/main.go:42 reads scripts/install.sh while running, but only the binary is shipped;
+add it to greyship.toml (files = ["scripts/install.sh"]) or use //go:embed
+```
+
+It spots literal paths passed to `os.Open`, `os.ReadFile`, `os.ReadDir`, `os.Stat`, `os.DirFS`,
+`template.ParseFiles`, `template.ParseGlob` and `http.Dir`.

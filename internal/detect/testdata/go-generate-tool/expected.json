@@ -1,0 +1,14 @@
+{
+  "services": [
+    {
+      "name": "acme",
+      "path": ".",
+      "type": "web"
+    }
+  ],
+  "skipped": [
+    "./internal/gen",
+    "./tools/embedder"
+  ],
+  "project": "acme"
+}

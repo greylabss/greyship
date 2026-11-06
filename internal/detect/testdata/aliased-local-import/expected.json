@@ -1,0 +1,11 @@
+{
+  "services": [
+    {
+      "name": "api",
+      "path": "./cmd/api",
+      "type": "web",
+      "reason": "stdhttp.ListenAndServe"
+    }
+  ],
+  "project": "acme"
+}
