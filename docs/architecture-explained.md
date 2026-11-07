@@ -107,7 +107,7 @@ The receptionist counts how many visitors each robot is handling. When one robot
 ## The tricky words, explained simply
 
 ### Who gets a key? (accounts and passwords)
-Think of Greyship as a building. The first person to move in is the **owner** and holds the master key (an **admin**). Everyone else needs the owner to let them in. The owner can cut a new key for someone, a name and a secret password, and say whether it is a master key or a normal one. We never keep the password itself, only a scrambled fingerprint of it, so even someone who steals our notes can't read it. If someone guesses wrong too many times in a row, the door stays shut for a few minutes. At least one master key always exists.
+Think of Greyship as a building. The first person to walk into a brand-new building gets to choose their own email and password, and becomes the owner with the master key. After that nobody can sign themselves up. The owner cuts a key for each person: an email, a name and a password, and says whether it is a master key or a normal one. The owner can also say how much room that person may use (how much memory, how much processor, how many builds at once). We never keep the password itself, only a scrambled fingerprint of it. If someone guesses wrong too many times in a row, the door stays shut for a few minutes. If someone forgets their password, nobody sends an email: the owner walks to the server room (SSH into the server) and runs one command that makes a new password. At least one master key always exists.
 
 ### How does Greyship send email?
 Greyship doesn't run its own post office. It hires one called Resend. The owner gives Greyship the Resend key (like a membership card) and the street address it should send from (the domain) on the Email page. Greyship locks the card in a safe (encrypted) and takes it out only when it needs to post a letter. With no card, no letters go out; sign-in codes are left in a drawer on the server instead.
@@ -214,7 +214,7 @@ If your code lives on GitHub, you can give Greyship a **key to just the shelves 
 
 Each team gets **its own workbench with its own drawer of spare parts** (a cache volume), so your second build is quicker, and no other team can ever put a bad part in your drawer. The workshop never gets your secrets. It gets a one-time pickup slip for your code box and drop-off slips for the finished robots (presigned links that expire), and that's all.
 
-How big the workbench is, and how many minutes of building a month you get, depends on your plan: Free gets a small bench and 100 minutes, Pro a bigger one and 500, Team the biggest and 1,500. Building on your own computer is still free and doesn't use any minutes.
+How big the workbench is comes from how the server was set up. There are no plans and no build minutes: building on the server or on your own computer is never counted. The person running the server can limit how much each user may use, in memory, processor and builds at once.
 
 **The warehouse moves too.** Code boxes and finished robots used to sit in a warehouse inside our building (Garage). They now go to a big shared warehouse, Cloudflare R2, so the workshop can reach them, and so nothing important is lost if our building ever has a problem.
 

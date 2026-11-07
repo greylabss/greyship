@@ -2,7 +2,7 @@ import type { IconName } from "@/components/ui/icons";
 
 export type NavItem = { label: string; href: string; icon: IconName; match: (path: string) => boolean };
 
-const reserved = new Set(["deployments", "usage", "billing", "settings", "new"]);
+const reserved = new Set(["deployments", "usage", "settings", "new"]);
 
 export function projectFromPath(path: string): string | null {
   const [, , project] = path.split("/");
@@ -16,7 +16,6 @@ export function teamNav(team: string): NavItem[] {
     { label: "Projects", href: base, icon: "projects", match: (p) => p === base },
     { label: "Deployments", href: `${base}/deployments`, icon: "deployments", match: at("deployments") },
     { label: "Usage", href: `${base}/usage`, icon: "usage", match: at("usage") },
-    { label: "Billing", href: `${base}/billing`, icon: "billing", match: at("billing") },
     { label: "Settings", href: `${base}/settings`, icon: "settings", match: at("settings") },
   ];
 }

@@ -98,6 +98,10 @@ func (s *Scheduler) Release(ctx context.Context, job bus.Job) error {
 	if errors.Is(err, ErrNoCapacity) {
 		return s.fail(ctx, d.ID, log, "no capacity: no node has room for this deployment")
 	}
+	var limit *LimitError
+	if errors.As(err, &limit) {
+		return s.fail(ctx, d.ID, log, limit.Message)
+	}
 	if err != nil {
 		return err
 	}
@@ -174,6 +178,9 @@ func (s *Scheduler) startInstance(ctx context.Context, svc store.Service, artifa
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := store.New(tx)
+	if err := checkLimits(ctx, q, svc); err != nil {
+		return store.Instance{}, err
+	}
 	inst, err := q.CreateInstance(ctx, store.CreateInstanceParams{ServiceID: svc.ID, ArtifactID: artifactID, DeploymentID: deploymentID, NodeID: node.ID, MemoryMb: svc.MemoryMb})
 	if err != nil {
 		return store.Instance{}, fmt.Errorf("create instance of %s: %w", svc.Name, err)

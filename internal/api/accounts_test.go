@@ -17,8 +17,22 @@ import (
 )
 
 type fakeAccounts struct {
-	err   error
-	calls []string
+	err    error
+	calls  []string
+	limits auth.Limits
+}
+
+func (f *fakeAccounts) NeedsSetup(context.Context) (bool, error) {
+	f.calls = append(f.calls, "needs-setup")
+	return f.err == nil, nil
+}
+
+func (f *fakeAccounts) Setup(_ context.Context, in auth.NewUser, _ string) (string, store.User, error) {
+	f.calls = append(f.calls, "setup")
+	if f.err != nil {
+		return "", store.User{}, f.err
+	}
+	return "tok-setup", store.User{ID: "u0", Email: in.Email, IsOwner: true}, nil
 }
 
 func (f *fakeAccounts) LoginPassword(_ context.Context, email, _, _, _ string) (string, store.User, error) {
@@ -45,6 +59,18 @@ func (f *fakeAccounts) SetPassword(context.Context, string, string, string) erro
 func (f *fakeAccounts) AdminSetPassword(context.Context, string, string) error {
 	f.calls = append(f.calls, "admin-set-password")
 	return f.err
+}
+
+func (f *fakeAccounts) SetLimits(_ context.Context, _ string, l auth.Limits) error {
+	f.calls = append(f.calls, "set-limits")
+	f.limits = l
+	return f.err
+}
+
+func (f *fakeAccounts) Usage(context.Context, string) (auth.Usage, error) {
+	f.calls = append(f.calls, "usage")
+	mem := int32(1024)
+	return auth.Usage{MemoryUsedMB: 256, Limits: auth.Limits{MemoryMB: &mem}}, f.err
 }
 
 func (f *fakeAccounts) SetAdmin(context.Context, string, bool) error {
@@ -75,8 +101,16 @@ func TestAccountEndpoints(t *testing.T) {
 		{"admin promotes", "PATCH", "/v1/admin/users/u2", `{"admin":true}`, "admin", "", nil, 204, "", "set-admin"},
 		{"last admin stays", "PATCH", "/v1/admin/users/u1", `{"admin":false}`, "admin", "", auth.ErrLastAdmin, 409, "last_admin", "set-admin"},
 		{"unknown user", "PATCH", "/v1/admin/users/nobody", `{"admin":true}`, "admin", "", auth.ErrNoUser, 404, "not_found", "set-admin"},
+		{"admin sets limits", "PATCH", "/v1/admin/users/u2", `{"limits":{"memory_mb":512,"cpu_cores":0.5,"concurrent_builds":null}}`, "admin", "", nil, 204, "", "set-limits"},
+		{"invalid limits", "PATCH", "/v1/admin/users/u2", `{"limits":{"memory_mb":-1}}`, "admin", "", auth.ErrInvalidLimits, 400, "invalid_limits", "set-limits"},
+		{"member can't set limits", "PATCH", "/v1/admin/users/u2", `{"limits":{"memory_mb":512}}`, "member", "", nil, 404, "not_found", ""},
+		{"user reads own usage", "GET", "/v1/me/usage", "", "member", "", nil, 200, `"memory_max_mb":1024`, "usage"},
 		{"empty update", "PATCH", "/v1/admin/users/u2", `{}`, "admin", "", nil, 400, "nothing_to_change", ""},
 		{"member can't update", "PATCH", "/v1/admin/users/u2", `{"admin":true}`, "member", "", nil, 404, "not_found", ""},
+		{"setup of a new instance", "POST", "/v1/auth/setup", `{"email":"boss@example.com","password":"a long enough password"}`, "", "", nil, 201, `"is_owner":true`, "setup"},
+		{"setup of an instance with an owner", "POST", "/v1/auth/setup", `{"email":"x@example.com","password":"a long enough password"}`, "", "", auth.ErrSetupDone, 409, "setup_done", "setup"},
+		{"setup with another email than the owner's", "POST", "/v1/auth/setup", `{"email":"x@example.com","password":"a long enough password"}`, "", "", auth.ErrNotOwnerEmail, 403, "not_owner_email", "setup"},
+		{"setup status", "GET", "/v1/auth/setup", "", "", "", nil, 200, `"setup_needed":true`, "needs-setup"},
 		{"password login", "POST", "/v1/auth/password/login", `{"email":"beta@example.com","password":"greylabs-greylabs"}`, "", "", nil, 200, "beta@example.com", "login"},
 		{"wrong password", "POST", "/v1/auth/password/login", `{"email":"beta@example.com","password":"nope"}`, "", "", auth.ErrInvalidLogin, 401, "invalid_login", "login"},
 		{"locked out", "POST", "/v1/auth/password/login", `{"email":"beta@example.com","password":"nope"}`, "", "", &auth.RateLimitError{RetryAfter: time.Minute}, 429, "rate_limited", "login"},
@@ -105,8 +139,14 @@ func TestAccountEndpoints(t *testing.T) {
 			if got := strings.Join(acc.calls, ","); got != tt.calls {
 				t.Fatalf("service calls = %q, want %q", got, tt.calls)
 			}
+			if tt.name == "admin sets limits" && (acc.limits.MemoryMB == nil || *acc.limits.MemoryMB != 512 || acc.limits.CPUMillis == nil || *acc.limits.CPUMillis != 500 || acc.limits.ConcurrentBuilds != nil) {
+				t.Fatalf("limits passed on = %+v", acc.limits)
+			}
 			if tt.name == "password login" && !strings.Contains(rec.Header().Get("Set-Cookie"), "tok-pw") {
 				t.Fatal("a password login sets no session cookie")
+			}
+			if tt.name == "setup of a new instance" && !strings.Contains(rec.Header().Get("Set-Cookie"), "tok-setup") {
+				t.Fatal("setup doesn't sign the owner in")
 			}
 		})
 	}

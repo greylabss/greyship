@@ -32,7 +32,3 @@ export async function call<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE
   }
   return data as T;
 }
-
-export function oauthStartURL(provider: "google" | "github") {
-  return `${apiURL}/v1/auth/oauth/${provider}/start`;
-}

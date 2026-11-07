@@ -9,10 +9,9 @@ import { LinkButton } from "@/components/ui/button";
 import { DataSection } from "@/components/ui/data-section";
 import { EmptyState } from "@/components/ui/empty-state";
 import { icons } from "@/components/ui/icons";
-import { Meter } from "@/components/ui/meter";
 import { Skeleton, SkeletonRows } from "@/components/ui/skeleton";
 import { api, available } from "@/lib/api";
-import { compact, dollars } from "@/lib/format";
+import { compact } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Overview" };
 
@@ -40,9 +39,6 @@ export default function OverviewPage({ params }: PageProps<"/[team]">) {
           </DataSection>
 
           <div className="flex flex-col gap-8">
-            <DataSection what="usage" fallback={<Skeleton className="h-56 w-full rounded-panel" />}>
-              <UsagePanel team={team} />
-            </DataSection>
             <DataSection what="recent deployments" fallback={<SkeletonRows rows={4} />}>
               <RecentDeployments team={team} />
             </DataSection>
@@ -55,23 +51,14 @@ export default function OverviewPage({ params }: PageProps<"/[team]">) {
 
 async function Stats({ team: teamSlug }: { team: Promise<string> }) {
   const team = await teamSlug;
-  const [info, projects, usage, activity] = await Promise.all([
-    api.getTeam(team),
-    api.listProjects(team),
-    available.usage ? api.getUsage(team) : null,
-    api.listActivity(team),
-  ]);
-  const projectLimit = info.plan === "free" ? 3 : info.plan === "unlimited" ? null : 25;
+  const [projects, activity] = await Promise.all([api.listProjects(team), api.listActivity(team)]);
   const requests = projects.reduce((n, p) => n + p.requests24h, 0);
   const sleeping = projects.filter((p) => p.health === "sleeping").length;
 
   const stats = [
-    { label: "Projects", value: String(projects.length), detail: projectLimit ? `/ ${projectLimit}` : "" },
+    { label: "Projects", value: String(projects.length), detail: "" },
     ...(available.metrics ? [{ label: "Requests · 24h", value: compact(requests), detail: "" }] : []),
-    { label: "Sleeping now", value: String(sleeping), detail: "costing $0" },
-    usage
-      ? { label: "Spend this month", value: dollars(usage.spendCents), detail: `cap ${dollars(info.spendCapCents).replace(".00", "")}` }
-      : { label: "Spend this month", value: "$0", detail: "free in the beta" },
+    { label: "Sleeping now", value: String(sleeping), detail: "holding no CPU" },
     { label: "Deploys · 7d", value: String(activity.length), detail: "" },
   ];
 
@@ -79,7 +66,7 @@ async function Stats({ team: teamSlug }: { team: Promise<string> }) {
     <dl
       className={cx(
         "grid grid-cols-2 gap-px overflow-hidden rounded-panel border border-border bg-border",
-        stats.length === 5 ? "sm:grid-cols-3 lg:grid-cols-5 max-sm:[&>*:last-child]:col-span-2" : "sm:grid-cols-4",
+        stats.length === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3",
       )}
     >
       {stats.map((s) => (
@@ -133,47 +120,6 @@ async function Projects({ team: teamSlug }: { team: Promise<string> }) {
         <ProjectCard key={p.slug} team={team} project={p} metrics={available.metrics} />
       ))}
     </ProjectsLayout>
-  );
-}
-
-async function UsagePanel({ team: teamSlug }: { team: Promise<string> }) {
-  const team = await teamSlug;
-  if (!available.usage) return null;
-  const [info, usage] = await Promise.all([api.getTeam(team), api.getUsage(team)]);
-
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="flex h-9 items-center text-16 font-semibold">Usage</h2>
-      <div className="flex flex-col rounded-panel border border-border">
-        <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-          <span className="font-medium">{usage.period}</span>
-          {info.plan === "free" ? (
-            <LinkButton href={`/${team}/billing`} size="sm">
-              Upgrade
-            </LinkButton>
-          ) : (
-            <span className="text-13 text-muted">Resets {usage.resetsOn}</span>
-          )}
-        </div>
-        <div className="flex flex-col gap-4 px-4 py-4">
-          {usage.meters.map((m) => (
-            <div key={m.label} className="flex flex-col gap-1.5">
-              <div className="flex justify-between gap-3 text-13">
-                <span>{m.label}</span>
-                <span className="font-mono text-12 text-muted tabular">
-                  {m.unit === "requests" ? compact(m.used) : m.used} /{" "}
-                  {m.unit === "requests" ? compact(m.included) : `${m.included} ${m.unit}`}
-                </span>
-              </div>
-              <Meter value={m.used} max={m.included} label={`${m.label} used`} />
-            </div>
-          ))}
-        </div>
-        <Link href={`/${team}/usage`} className="border-t border-border px-4 py-2.5 text-13 text-muted hover:text-fg">
-          Sleeping apps don&apos;t count · View usage
-        </Link>
-      </div>
-    </section>
   );
 }
 

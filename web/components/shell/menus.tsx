@@ -9,29 +9,22 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/primitives/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/primitives/popover";
-import { BetaBadge } from "@/components/ui/beta-badge";
 import { icons } from "@/components/ui/icons";
 import { apiEnabled, call } from "@/lib/greyship-api";
 
-export function AccountMenu({ team, name, plan, email, betaTester = false }: { team: string; name: string; plan: string; email: string; betaTester?: boolean }) {
+export function AccountMenu({ team, name, email }: { team: string; name: string; email: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-input px-2 outline-none hover:bg-surface focus-visible:ring-2 focus-visible:ring-fg/50 data-[state=open]:bg-surface">
         <span className="truncate font-medium">{name}</span>
-        {betaTester && <BetaBadge />}
-        {plan !== "unlimited" && <span className="rounded-control border border-border-strong px-1.5 text-12 capitalize text-muted">{plan}</span>}
         <icons.updown className="ml-auto text-dim" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-60">
         <DropdownMenuLabel className="flex flex-col font-normal">
-          <span className="flex items-center gap-1.5 font-medium text-fg">
-            {name}
-            {betaTester && <span className="text-12 font-normal text-beta">beta tester</span>}
-          </span>
+          <span className="font-medium text-fg">{name}</span>
           <span className="text-12 text-muted">{email}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -41,15 +34,6 @@ export function AccountMenu({ team, name, plan, email, betaTester = false }: { t
             Settings
           </Link>
         </DropdownMenuItem>
-        {plan !== "unlimited" && (
-          <DropdownMenuItem asChild>
-            <Link href={`/${team}/billing`}>
-              <icons.billing />
-              Billing
-              <DropdownMenuShortcut className="capitalize">{plan}</DropdownMenuShortcut>
-            </Link>
-          </DropdownMenuItem>
-        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

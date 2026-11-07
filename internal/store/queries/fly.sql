@@ -38,12 +38,3 @@ DELETE FROM build_reports WHERE deployment_id = $1;
 
 -- name: RecordBuildRun :exec
 UPDATE deployments SET runner = $2, machine_size = $3, build_seconds = $4 WHERE id = $1;
-
--- name: TeamBuildSeconds :one
--- Server build time a team used since the start of the month (spec §7); local builds have no build_seconds.
-SELECT coalesce(sum(d.build_seconds), 0)::bigint FROM deployments d
-JOIN projects p ON p.id = d.project_id
-WHERE p.team_id = $1 AND d.created_at >= date_trunc('month', now());
-
--- name: TeamPlan :one
-SELECT plan FROM teams WHERE id = $1;

@@ -225,28 +225,3 @@ func (q *Queries) StaleBuildMachines(ctx context.Context, days int32) ([]BuildMa
 	}
 	return items, nil
 }
-
-const teamBuildSeconds = `-- name: TeamBuildSeconds :one
-SELECT coalesce(sum(d.build_seconds), 0)::bigint FROM deployments d
-JOIN projects p ON p.id = d.project_id
-WHERE p.team_id = $1 AND d.created_at >= date_trunc('month', now())
-`
-
-// Server build time a team used since the start of the month (spec §7); local builds have no build_seconds.
-func (q *Queries) TeamBuildSeconds(ctx context.Context, teamID string) (int64, error) {
-	row := q.db.QueryRow(ctx, teamBuildSeconds, teamID)
-	var column_1 int64
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const teamPlan = `-- name: TeamPlan :one
-SELECT plan FROM teams WHERE id = $1
-`
-
-func (q *Queries) TeamPlan(ctx context.Context, id string) (string, error) {
-	row := q.db.QueryRow(ctx, teamPlan, id)
-	var plan string
-	err := row.Scan(&plan)
-	return plan, err
-}

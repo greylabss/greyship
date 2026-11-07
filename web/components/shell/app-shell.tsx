@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { Suspense, type ReactNode } from "react";
 import { Meter } from "@/components/ui/meter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, available } from "@/lib/api";
+import { api } from "@/lib/api";
 import { parseScenario, scenarioCookie } from "@/lib/fixtures/scenarios";
 import { ScenarioSwitcher } from "./scenario-switcher";
 import { CommandMenu } from "./command-menu";
@@ -43,16 +43,11 @@ export function AppShell({ team, children }: { team: Promise<string>; children: 
   );
 }
 
-async function load(teamSlug: Promise<string>) {
+async function Account({ team: teamSlug }: { team: Promise<string> }) {
   const team = await teamSlug;
-  return Promise.all([api.me(), api.getTeam(team), available.usage ? api.getUsage(team) : null, available.usage ? null : api.buildUsage(team)]).catch(() => null);
-}
-
-async function Account({ team }: { team: Promise<string> }) {
-  const data = await load(team);
-  if (!data) return null;
-  const [me, info] = data;
-  return <AccountMenu team={info.slug} name={info.name} plan={info.plan} email={me.email} betaTester={me.betaTester} />;
+  const [me, info] = await Promise.all([api.me(), api.getTeam(team)]).catch(() => [null, null] as const);
+  if (!me || !info) return null;
+  return <AccountMenu team={info.slug} name={info.name} email={me.email} />;
 }
 
 async function Palette({ team: teamSlug }: { team: Promise<string> }) {
@@ -61,45 +56,25 @@ async function Palette({ team: teamSlug }: { team: Promise<string> }) {
   return <CommandMenu projects={projects.map((p) => ({ slug: p.slug, url: p.url }))} />;
 }
 
-async function SidebarFooter({ team }: { team: Promise<string> }) {
-  const data = await load(team);
-  if (!data) return null;
-  const [me, info, usage, builds] = data;
-  if (!usage) {
-    return (
-      <div className="flex flex-col gap-3 px-3 pb-3">
-        {builds && info.plan === "free" && (
-          <Link href={`/${info.slug}/usage`} className="flex flex-col gap-2 rounded-panel border border-border p-3 hover:border-border-strong">
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-13 font-medium">Free plan</span>
-              <span className="text-12 text-muted tabular">
-                {builds.usedMinutes} / {builds.includedMinutes} build min
-              </span>
-            </div>
-            <Meter value={builds.usedMinutes} max={builds.includedMinutes} label="Build minutes used this month" />
-            <span className="text-12 text-muted">Resets {builds.resetsOn}.</span>
-          </Link>
-        )}
-        <UserMenu team={info.slug} email={me.email} initials={me.initials} />
-      </div>
-    );
-  }
-  const peak = usage.meters.reduce((a, b) => (b.used / b.included > a.used / a.included ? b : a));
-  const pct = Math.round((peak.used / peak.included) * 100);
-
+async function SidebarFooter({ team: teamSlug }: { team: Promise<string> }) {
+  const team = await teamSlug;
+  const [me, usage] = await Promise.all([api.me(), api.myUsage()]).catch(() => [null, null] as const);
+  if (!me) return null;
+  const limited = usage && (usage.memoryMaxMb !== null || usage.cpuMaxCores !== null);
   return (
     <div className="flex flex-col gap-3 px-3 pb-3">
-      {info.plan === "free" && (
-        <Link href={`/${info.slug}/usage`} className="flex flex-col gap-2 rounded-panel border border-border p-3 hover:border-border-strong">
+      {limited && usage.memoryMaxMb !== null && (
+        <Link href={`/${team}/usage`} className="flex flex-col gap-2 rounded-panel border border-border p-3 hover:border-border-strong">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-13 font-medium">Free plan</span>
-            <span className="text-12 text-muted tabular">{pct}% used</span>
+            <span className="text-13 font-medium">Memory</span>
+            <span className="text-12 text-muted tabular">
+              {usage.memoryUsedMb} / {usage.memoryMaxMb} MB
+            </span>
           </div>
-          <Meter value={peak.used} max={peak.included} label={`${peak.label} used this month`} />
-          <span className="text-12 text-muted">Idle apps don&apos;t count. Resets {usage.resetsOn}.</span>
+          <Meter value={usage.memoryUsedMb} max={usage.memoryMaxMb} label="Memory used" />
         </Link>
       )}
-      <UserMenu team={info.slug} email={me.email} initials={me.initials} />
+      <UserMenu team={team} email={me.email} initials={me.initials} />
     </div>
   );
 }

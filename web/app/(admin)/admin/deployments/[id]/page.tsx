@@ -57,7 +57,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
         <Section title="Deployment">
           <Grid
             rows={[
-              ["Team", `${d.TeamSlug} (${d.TeamPlan}) · ${d.TeamID}`],
+              ["Team", `${d.TeamSlug} · ${d.TeamID}`],
               ["Project", `${d.ProjectName} · ${d.ProjectID}`],
               ["Started by", d.CreatedByEmail || "— (GitHub push)"],
               ["Source", d.Source],

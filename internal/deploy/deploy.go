@@ -15,7 +15,6 @@ import (
 
 	"greyship.tech/internal/bus"
 	"greyship.tech/internal/objstore"
-	"greyship.tech/internal/plan"
 	"greyship.tech/internal/project"
 	"greyship.tech/internal/store"
 )
@@ -167,15 +166,17 @@ func (s *Service) queue(ctx context.Context, id, teamID, kind string) (store.Dep
 	if err != nil {
 		return store.Deployment{}, fmt.Errorf("queue deployment %s: %w", id, err)
 	}
-	// A team runs as many builds at once as its plan allows, and paid plans are claimed first (spec §6): a team's
-	// burst of deploys waits behind its own builds, not everyone else's. A check of a local build is a different
-	// kind, so it never waits behind someone's compile.
-	teamPlan, err := q.TeamPlan(ctx, teamID)
+	// An admin may limit how many builds one user runs at once; a user's burst of deploys then waits behind their
+	// own builds, not everyone else's. A check of a local build is a different kind, so it never waits behind
+	// someone's compile. No limit means no group.
+	maxBuilds, err := q.TeamMaxConcurrentBuilds(ctx, teamID)
 	if err != nil {
-		return store.Deployment{}, fmt.Errorf("load plan of team %s: %w", teamID, err)
+		return store.Deployment{}, fmt.Errorf("load build limit of team %s: %w", teamID, err)
 	}
-	limits := plan.Builds(teamPlan)
-	group := bus.Group{Key: teamID, Limit: int32(limits.Concurrent), Priority: int32(limits.Priority)} //nolint:gosec // small plan constants
+	var group bus.Group
+	if maxBuilds != nil {
+		group = bus.Group{Key: teamID, Limit: *maxBuilds}
+	}
 	if _, err := bus.EnqueueGrouped(ctx, q, kind, group, map[string]string{"deployment_id": id}); err != nil {
 		return store.Deployment{}, err
 	}
@@ -336,30 +337,6 @@ func (s *Service) Services(ctx context.Context, c project.Caller, projectID stri
 		return nil, fmt.Errorf("list services of %s: %w", p.ID, err)
 	}
 	return rows, nil
-}
-
-// BuildMinutes is a team's server build time this month and what its plan includes (spec §7).
-func (s *Service) BuildMinutes(ctx context.Context, teamID string) (usedSeconds int64, included int, err error) {
-	q := store.New(s.pool)
-	teamPlan, err := q.TeamPlan(ctx, teamID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("load plan of team %s: %w", teamID, err)
-	}
-	used, err := q.TeamBuildSeconds(ctx, teamID)
-	if err != nil {
-		return 0, 0, fmt.Errorf("load build minutes of team %s: %w", teamID, err)
-	}
-	// 0 included minutes means unlimited.
-	return used, plan.Builds(teamPlan).IncludedMinutes, nil
-}
-
-// TeamBuildMinutes is BuildMinutes for a member of the team (the usage screen).
-func (s *Service) TeamBuildMinutes(ctx context.Context, c project.Caller, teamSlug string) (usedSeconds int64, included int, err error) {
-	team, err := s.projects.Member(ctx, c, teamSlug, false)
-	if err != nil {
-		return 0, 0, err
-	}
-	return s.BuildMinutes(ctx, team.ID)
 }
 
 // URLs lists the public web services of a deployment and their subdomain labels.

@@ -11,6 +11,7 @@ import type {
   ProjectDetail,
   ProjectHealth,
   ProjectSummary,
+  ResourceUsage,
   Service,
   Team,
   User,
@@ -70,7 +71,7 @@ async function ndjson<T>(path: string): Promise<T[]> {
     .map((l) => JSON.parse(l) as T);
 }
 
-type ApiUser = { id: string; email: string; name?: string; beta_tester?: boolean; has_password?: boolean; teams: { id: string; slug: string; name: string; plan: string; role: string }[] };
+type ApiUser = { id: string; email: string; name?: string; teams: { id: string; slug: string; name: string; role: string }[] };
 type ApiProject = { id: string; team: string; name: string; slug: string; created_at: string };
 type ApiDeployment = {
   id: string;
@@ -200,14 +201,10 @@ async function summary(p: ApiProject): Promise<ProjectSummary & { services: Serv
     serviceCount: services.length,
     requests24h: 0,
     requestsSeries: [],
-    spendCents: 0,
     services,
     deployments,
   };
 }
-
-// Server build time this month (spec §7); builds on the developer's machine are free and not counted.
-export type BuildUsage = { usedMinutes: number; includedMinutes: number; resetsOn: string };
 
 export type TokenRow = { id?: string; name: string; created: string; lastUsed: string };
 
@@ -252,12 +249,13 @@ export async function githubState(team: string): Promise<GitHubState> {
 }
 
 export const live = {
-  // null when the instance has no build-minute limit.
-  async buildUsage(team: string): Promise<BuildUsage | null> {
-    const u = await json<{ used_seconds: number; included_minutes: number; resets_on: string }>(`/v1/teams/${encodeURIComponent(team)}/usage/builds`);
-    if (u.included_minutes === 0) return null;
-    const resetsOn = new Date(`${u.resets_on}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
-    return { usedMinutes: Math.ceil(u.used_seconds / 60), includedMinutes: u.included_minutes, resetsOn };
+  async setupNeeded(): Promise<boolean> {
+    return (await json<{ setup_needed: boolean }>("/v1/auth/setup")).setup_needed;
+  },
+
+  async myUsage(): Promise<ResourceUsage> {
+    const u = await json<{ memory_used_mb: number; memory_max_mb: number | null; cpu_used_cores: number; cpu_max_cores: number | null; concurrent_builds_max: number | null }>("/v1/me/usage");
+    return { memoryUsedMb: u.memory_used_mb, memoryMaxMb: u.memory_max_mb, cpuUsedCores: u.cpu_used_cores, cpuMaxCores: u.cpu_max_cores, concurrentBuildsMax: u.concurrent_builds_max };
   },
 
   async listTokens(): Promise<TokenRow[]> {
@@ -269,7 +267,7 @@ export const live = {
   async me(): Promise<User> {
     const { user } = await json<{ user: ApiUser }>("/v1/me");
     const name = user.name || user.email.split("@")[0];
-    return { id: user.id, name, email: user.email, initials: name.slice(0, 1).toUpperCase(), betaTester: user.beta_tester ?? false, hasPassword: user.has_password ?? false };
+    return { id: user.id, name, email: user.email, initials: name.slice(0, 1).toUpperCase() };
   },
 
   async teams(): Promise<string[]> {
@@ -281,7 +279,7 @@ export const live = {
     const { user } = await json<{ user: ApiUser }>("/v1/me");
     const t = user.teams.find((x) => x.slug === slug);
     if (!t) throw new ApiError("No such team.", 404);
-    return { slug: t.slug, name: t.name, plan: t.plan === "pro" || t.plan === "team" || t.plan === "unlimited" ? t.plan : "free", spendCapCents: 0 };
+    return { slug: t.slug, name: t.name };
   },
 
   async listProjects(team: string): Promise<ProjectSummary[]> {

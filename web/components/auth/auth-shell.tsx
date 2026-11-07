@@ -22,13 +22,3 @@ export function AuthShell({ aside, children }: { aside: ReactNode; children: Rea
     </div>
   );
 }
-
-export function Divider() {
-  return (
-    <div className="flex items-center gap-3 text-12 text-dim">
-      <span className="h-px flex-1 bg-border" />
-      or
-      <span className="h-px flex-1 bg-border" />
-    </div>
-  );
-}

@@ -86,7 +86,7 @@ func (q *Queries) AdminCounts(ctx context.Context) (AdminCountsRow, error) {
 }
 
 const adminDeployment = `-- name: AdminDeployment :one
-SELECT d.id, d.project_id, d.source, d.status, d.env, d.commit_sha, d.source_key, d.source_size, d.source_sha256, d.created_by, d.created_at, d.finished_at, d.error, d.started_at, d.build_mode, d.runner, d.machine_size, d.build_seconds, d.branch, d.github_reported, d.rollback_of, d.files_key, d.files_sha256, d.files_size, p.slug AS project_slug, p.name AS project_name, t.id AS team_id, t.slug AS team_slug, t.plan AS team_plan,
+SELECT d.id, d.project_id, d.source, d.status, d.env, d.commit_sha, d.source_key, d.source_size, d.source_sha256, d.created_by, d.created_at, d.finished_at, d.error, d.started_at, d.build_mode, d.runner, d.machine_size, d.build_seconds, d.branch, d.github_reported, d.rollback_of, d.files_key, d.files_sha256, d.files_size, p.slug AS project_slug, p.name AS project_name, t.id AS team_id, t.slug AS team_slug,
        coalesce(u.email::text, '')::text AS created_by_email,
        coalesce((SELECT r.full_name FROM project_repos r WHERE r.project_id = p.id LIMIT 1), '')::text AS repo
 FROM deployments d
@@ -125,7 +125,6 @@ type AdminDeploymentRow struct {
 	ProjectName    string
 	TeamID         string
 	TeamSlug       string
-	TeamPlan       string
 	CreatedByEmail string
 	Repo           string
 }
@@ -162,7 +161,6 @@ func (q *Queries) AdminDeployment(ctx context.Context, id string) (AdminDeployme
 		&i.ProjectName,
 		&i.TeamID,
 		&i.TeamSlug,
-		&i.TeamPlan,
 		&i.CreatedByEmail,
 		&i.Repo,
 	)
@@ -543,28 +541,39 @@ func (q *Queries) AdminNodes(ctx context.Context) ([]AdminNodesRow, error) {
 }
 
 const adminUsers = `-- name: AdminUsers :many
-SELECT u.id, u.email::text AS email, u.name, u.is_owner, (u.password_hash <> '')::bool AS has_password, u.beta_tester, u.created_at,
+SELECT u.id, u.email::text AS email, u.name, u.is_owner, (u.password_hash <> '')::bool AS has_password, u.created_at,
        coalesce(string_agg(DISTINCT t.slug, ', '), '')::text AS teams,
        (SELECT count(*) FROM projects p JOIN memberships m2 ON m2.team_id = p.team_id WHERE m2.user_id = u.id)::bigint AS projects,
-       ld.last_deploy
+       ld.last_deploy,
+       ot.max_memory_mb, ot.max_cpu_millis, ot.max_concurrent_builds,
+       coalesce((SELECT sum(i.memory_mb) FROM instances i JOIN services s ON s.id = i.service_id JOIN projects p ON p.id = s.project_id
+                 WHERE p.team_id = ot.id AND i.state IN ('starting', 'running', 'paused')), 0)::bigint AS memory_used_mb,
+       coalesce((SELECT sum(s.cpu_millis) FROM instances i JOIN services s ON s.id = i.service_id JOIN projects p ON p.id = s.project_id
+                 WHERE p.team_id = ot.id AND i.state IN ('starting', 'running', 'paused')), 0)::bigint AS cpu_used_millis
 FROM users u
+LEFT JOIN LATERAL (SELECT t2.id, t2.max_memory_mb, t2.max_cpu_millis, t2.max_concurrent_builds FROM teams t2 JOIN memberships m3 ON m3.team_id = t2.id
+                   WHERE m3.user_id = u.id AND m3.role = 'owner' ORDER BY t2.created_at LIMIT 1) ot ON true
 LEFT JOIN memberships m ON m.user_id = u.id
 LEFT JOIN teams t ON t.id = m.team_id
 LEFT JOIN (SELECT created_by, max(created_at) AS last_deploy FROM deployments GROUP BY created_by) ld ON ld.created_by = u.id
-GROUP BY u.id, ld.last_deploy ORDER BY u.created_at DESC LIMIT $1
+GROUP BY u.id, ld.last_deploy, ot.id, ot.max_memory_mb, ot.max_cpu_millis, ot.max_concurrent_builds ORDER BY u.created_at DESC LIMIT $1
 `
 
 type AdminUsersRow struct {
-	ID          string
-	Email       string
-	Name        string
-	IsOwner     bool
-	HasPassword bool
-	BetaTester  bool
-	CreatedAt   time.Time
-	Teams       string
-	Projects    int64
-	LastDeploy  interface{}
+	ID                  string
+	Email               string
+	Name                string
+	IsOwner             bool
+	HasPassword         bool
+	CreatedAt           time.Time
+	Teams               string
+	Projects            int64
+	LastDeploy          interface{}
+	MaxMemoryMb         *int32
+	MaxCpuMillis        *int32
+	MaxConcurrentBuilds *int32
+	MemoryUsedMb        int64
+	CpuUsedMillis       int64
 }
 
 func (q *Queries) AdminUsers(ctx context.Context, limit int32) ([]AdminUsersRow, error) {
@@ -582,11 +591,15 @@ func (q *Queries) AdminUsers(ctx context.Context, limit int32) ([]AdminUsersRow,
 			&i.Name,
 			&i.IsOwner,
 			&i.HasPassword,
-			&i.BetaTester,
 			&i.CreatedAt,
 			&i.Teams,
 			&i.Projects,
 			&i.LastDeploy,
+			&i.MaxMemoryMb,
+			&i.MaxCpuMillis,
+			&i.MaxConcurrentBuilds,
+			&i.MemoryUsedMb,
+			&i.CpuUsedMillis,
 		); err != nil {
 			return nil, err
 		}

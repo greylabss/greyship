@@ -141,17 +141,14 @@ func storage(t *testing.T) *objstore.Store {
 	}
 }
 
-// building makes a team on plan and a deployment in status building, as the builder would.
-func building(t *testing.T, pool *pgxpool.Pool, teamPlan string) (store.Deployment, string) {
+// building makes a team and a deployment in status building, as the builder would.
+func building(t *testing.T, pool *pgxpool.Pool, name string) (store.Deployment, string) {
 	t.Helper()
 	ctx := context.Background()
 	q := store.New(pool)
-	slug := teamPlan + "-" + newID(t, pool)[:8]
+	slug := name + "-" + newID(t, pool)[:8]
 	team, err := q.CreateTeam(ctx, store.CreateTeamParams{Slug: slug, Name: slug})
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, "UPDATE teams SET plan = $2 WHERE id = $1", team.ID, teamPlan); err != nil {
 		t.Fatal(err)
 	}
 	p, err := q.CreateProject(ctx, store.CreateProjectParams{TeamID: team.ID, Name: "shop", Slug: "shop"})
@@ -189,7 +186,7 @@ func TestFlyRunner(t *testing.T) {
 	runner := &fly.Runner{
 		Fly:  &fly.Client{Base: srv.URL + "/v1", App: "greyship-build", Token: "fly-token", Region: "fra", HTTP: srv.Client()},
 		Pool: pool, Storage: s3, Signer: signer, APIURL: "https://api.test", ImagePrefix: "registry.fly.io/greyship-build",
-		MaxMachines: 3, VolumeGB: 10, Poll: 20 * time.Millisecond, Logger: slog.New(slog.DiscardHandler), Now: time.Now,
+		MaxMachines: 3, VolumeGB: 10, CPUs: 4, MemoryMB: 8192, Timeout: 10 * time.Minute, Poll: 20 * time.Millisecond, Logger: slog.New(slog.DiscardHandler), Now: time.Now,
 	}
 	jobFor := func(d store.Deployment, team string) build.Job {
 		return build.Job{
@@ -201,7 +198,7 @@ func TestFlyRunner(t *testing.T) {
 	var lines []string
 	logLine := func(_, line string) { lines = append(lines, line) }
 
-	pro, proTeam := building(t, pool, "pro")
+	pro, proTeam := building(t, pool, "first")
 	res, err := runner.Run(ctx, jobFor(pro, proTeam), logLine)
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +207,7 @@ func TestFlyRunner(t *testing.T) {
 		t.Fatalf("result %+v, log %v", res, lines)
 	}
 	if ff.calls[0] != "POST /v1/apps/greyship-build/volumes" {
-		t.Fatalf("a paid team's first build must create its cache volume: %v", ff.calls)
+		t.Fatalf("a team's first build must create its cache volume: %v", ff.calls)
 	}
 
 	// The same team's next build reuses its machine and volume instead of making new ones.
@@ -226,16 +223,6 @@ func TestFlyRunner(t *testing.T) {
 	}
 	if ff.machines != before {
 		t.Fatal("the team's stopped machine should have been reused")
-	}
-
-	// Free builds start cold on a machine that is destroyed afterwards, and never share a volume.
-	free, freeTeam := building(t, pool, "free")
-	res, err = runner.Run(ctx, jobFor(free, freeTeam), logLine)
-	if err != nil || res.MachineSize != "performance-2x" {
-		t.Fatalf("free build: %+v %v", res, err)
-	}
-	if len(ff.destroyed) != 1 {
-		t.Fatalf("the free build machine must be destroyed: %v", ff.destroyed)
 	}
 
 	// Code that doesn't compile is the user's failure, not ours to retry.

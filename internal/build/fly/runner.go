@@ -14,7 +14,6 @@ import (
 
 	"greyship.tech/internal/auth"
 	"greyship.tech/internal/build"
-	"greyship.tech/internal/plan"
 	"greyship.tech/internal/store"
 )
 
@@ -34,6 +33,9 @@ type Runner struct {
 	ImagePrefix string // e.g. registry.fly.io/greyship-build; the image is <prefix>:go<minor>
 	MaxMachines int64
 	VolumeGB    int
+	CPUs        int           // CPUs of a build machine
+	MemoryMB    int           // memory of a build machine
+	Timeout     time.Duration // a build running longer is stopped
 	Poll        time.Duration
 	Logger      *slog.Logger
 	Now         func() time.Time
@@ -43,19 +45,13 @@ type Runner struct {
 var ErrNoMachine = errors.New("no build machine free")
 
 type leased struct {
-	row       store.BuildMachine
-	ephemeral bool
+	row store.BuildMachine
 }
 
 func (r *Runner) Run(ctx context.Context, job build.Job, logLine func(stream, line string)) (build.Result, error) {
 	q := store.New(r.Pool)
-	teamPlan, err := q.TeamPlan(ctx, job.Spec.TeamID)
-	if err != nil {
-		return build.Result{}, fmt.Errorf("load plan of team %s: %w", job.Spec.TeamID, err)
-	}
-	limits := plan.Builds(teamPlan)
 	dep := job.Spec.ID
-	ttl := limits.Timeout + 10*time.Minute
+	ttl := r.Timeout + 10*time.Minute
 	src, err := r.Storage.PresignGet(job.SourceKey, ttl)
 	if err != nil {
 		return build.Result{}, fmt.Errorf("presign source: %w", err)
@@ -79,17 +75,17 @@ func (r *Runner) Run(ctx context.Context, job build.Job, logLine func(stream, li
 	cfg := MachineConfig{
 		Image:   r.image(job.Spec.GoVersion),
 		Env:     map[string]string{"GREYSHIP_BUILD_JOB": string(payload)},
-		Guest:   Guest{CPUKind: "performance", CPUs: limits.MachineCPUs, MemoryMB: limits.MachineMemoryMB},
+		Guest:   Guest{CPUKind: "performance", CPUs: r.CPUs, MemoryMB: r.MemoryMB},
 		Restart: map[string]string{"policy": "no"},
 	}
-	m, err := r.lease(ctx, job.Spec.TeamID, limits, cfg)
+	m, err := r.lease(ctx, job.Spec.TeamID, cfg)
 	if err != nil {
 		return build.Result{}, err
 	}
 	defer r.release(m)
-	logLine("system", fmt.Sprintf("building on a %s machine", limits.Size()))
+	logLine("system", fmt.Sprintf("building on a %s machine", r.size()))
 
-	outcome, err := r.follow(ctx, m.row.FlyMachineID, dep, limits.Timeout, logLine)
+	outcome, err := r.follow(ctx, m.row.FlyMachineID, dep, r.Timeout, logLine)
 	if err != nil {
 		return build.Result{}, err
 	}
@@ -100,7 +96,7 @@ func (r *Runner) Run(ctx context.Context, job build.Job, logLine func(stream, li
 		}
 		return build.Result{}, fmt.Errorf("build machine: %s", outcome.Error)
 	}
-	res := build.Result{Binaries: map[string]build.Built{}, Seconds: outcome.Seconds, Runner: "fly", MachineSize: limits.Size()}
+	res := build.Result{Binaries: map[string]build.Built{}, Seconds: outcome.Seconds, Runner: "fly", MachineSize: r.size()}
 	for _, t := range job.Spec.Targets {
 		bin, ok := outcome.Binaries[t.Name]
 		if !ok {
@@ -118,23 +114,26 @@ func (r *Runner) Run(ctx context.Context, job build.Job, logLine func(stream, li
 	return res, nil
 }
 
-// lease gets a machine for this build and starts it. A team with a cache volume reuses its own stopped machine;
-// otherwise a new one is made, with a volume for paid plans or none (destroyed after the build) for Free.
-func (r *Runner) lease(ctx context.Context, team string, limits plan.Build, cfg MachineConfig) (leased, error) {
+// size is the Fly machine size name for the configured CPUs, e.g. "performance-4x".
+func (r *Runner) size() string {
+	return fmt.Sprintf("performance-%dx", r.CPUs)
+}
+
+// lease gets a machine for this build and starts it. A team reuses its own stopped machine and its cache volume;
+// otherwise a new machine is made with a volume.
+func (r *Runner) lease(ctx context.Context, team string, cfg MachineConfig) (leased, error) {
 	q := store.New(r.Pool)
-	if limits.CacheVolume {
-		row, err := q.PickBuildMachine(ctx, store.PickBuildMachineParams{TeamID: team, Size: limits.Size()})
-		if err == nil {
-			cfg.Mounts = []Mount{{Volume: *row.VolumeID, Path: "/cache"}}
-			if err := r.restart(ctx, row.FlyMachineID, cfg); err != nil {
-				_ = q.ReleaseBuildMachine(ctx, row.ID)
-				return leased{}, err
-			}
-			return leased{row: row}, nil
+	row, err := q.PickBuildMachine(ctx, store.PickBuildMachineParams{TeamID: team, Size: r.size()})
+	if err == nil {
+		cfg.Mounts = []Mount{{Volume: *row.VolumeID, Path: "/cache"}}
+		if err := r.restart(ctx, row.FlyMachineID, cfg); err != nil {
+			_ = q.ReleaseBuildMachine(ctx, row.ID)
+			return leased{}, err
 		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return leased{}, fmt.Errorf("pick build machine: %w", err)
-		}
+		return leased{row: row}, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return leased{}, fmt.Errorf("pick build machine: %w", err)
 	}
 	n, err := q.CountBuildMachines(ctx)
 	if err != nil {
@@ -143,31 +142,21 @@ func (r *Runner) lease(ctx context.Context, team string, limits plan.Build, cfg 
 	if n >= r.MaxMachines {
 		return leased{}, ErrNoMachine
 	}
-	var volume *string
-	teamID := &team
-	if limits.CacheVolume {
-		id, err := r.Fly.CreateVolume(ctx, "gs_cache_"+strings.ReplaceAll(team, "-", "")[:12], r.VolumeGB)
-		if err != nil {
-			return leased{}, err
-		}
-		volume = &id
-		cfg.Mounts = []Mount{{Volume: id, Path: "/cache"}}
-	} else {
-		teamID = nil
-		cfg.AutoDestroy = true
-	}
-	m, err := r.Fly.CreateMachine(ctx, cfg)
+	volume, err := r.Fly.CreateVolume(ctx, "gs_cache_"+strings.ReplaceAll(team, "-", "")[:12], r.VolumeGB)
 	if err != nil {
-		if volume != nil {
-			_ = r.Fly.DeleteVolume(context.WithoutCancel(ctx), *volume)
-		}
 		return leased{}, err
 	}
-	row, err := q.AddBuildMachine(ctx, store.AddBuildMachineParams{FlyMachineID: m.ID, VolumeID: volume, Size: limits.Size(), TeamID: teamID})
+	cfg.Mounts = []Mount{{Volume: volume, Path: "/cache"}}
+	m, err := r.Fly.CreateMachine(ctx, cfg)
+	if err != nil {
+		_ = r.Fly.DeleteVolume(context.WithoutCancel(ctx), volume)
+		return leased{}, err
+	}
+	created, err := q.AddBuildMachine(ctx, store.AddBuildMachineParams{FlyMachineID: m.ID, VolumeID: &volume, Size: r.size(), TeamID: &team})
 	if err != nil {
 		return leased{}, fmt.Errorf("record build machine %s: %w", m.ID, err)
 	}
-	return leased{row: row, ephemeral: !limits.CacheVolume}, nil
+	return leased{row: created}, nil
 }
 
 // restart gives a stopped machine the new build's config and starts it.
@@ -247,13 +236,6 @@ func (r *Runner) follow(ctx context.Context, machine, dep string, timeout time.D
 func (r *Runner) release(m leased) {
 	ctx := context.Background()
 	q := store.New(r.Pool)
-	if m.ephemeral {
-		if err := r.Fly.DestroyMachine(ctx, m.row.FlyMachineID); err != nil {
-			r.Logger.Warn("destroy build machine", "machine", m.row.FlyMachineID, "err", err)
-		}
-		_ = q.RemoveBuildMachine(ctx, m.row.ID)
-		return
-	}
 	_ = r.Fly.StopMachine(ctx, m.row.FlyMachineID)
 	if err := q.ReleaseBuildMachine(ctx, m.row.ID); err != nil {
 		r.Logger.Warn("release build machine", "machine", m.row.FlyMachineID, "err", err)

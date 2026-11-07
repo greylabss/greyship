@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ApiError, call } from "@/lib/greyship-api";
 import { generatePassword } from "./create-user";
+import { UserLimits } from "./user-limits";
 
-export function UserActions({ id, email, isAdmin }: { id: string; email: string; isAdmin: boolean }) {
+export function UserActions({ id, email, isAdmin, limits }: { id: string; email: string; isAdmin: boolean; limits: { memoryMb: number | null; cpuMillis: number | null; builds: number | null } }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
@@ -33,6 +34,7 @@ export function UserActions({ id, email, isAdmin }: { id: string; email: string;
 
   return (
     <div className="flex justify-end gap-1">
+      <UserLimits id={id} email={email} limits={limits} />
       <Button size="sm" variant="ghost" disabled={busy} onClick={() => void resetPassword()}>
         Reset password
       </Button>

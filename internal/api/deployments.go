@@ -25,9 +25,7 @@ type Deployments interface {
 	AppLogs(ctx context.Context, c project.Caller, projectID, service string, after int64, tail int32) ([]store.AppLogsAfterRow, error)
 	BuildsAhead(ctx context.Context, c project.Caller, id string) (int64, error)
 	Services(ctx context.Context, c project.Caller, projectID string) ([]store.LiveServiceStatesRow, error)
-	BuildMinutes(ctx context.Context, teamID string) (usedSeconds int64, included int, err error)
 	Redeploy(ctx context.Context, c project.Caller, id string) (deploy.Deployment, error)
-	TeamBuildMinutes(ctx context.Context, c project.Caller, teamSlug string) (usedSeconds int64, included int, err error)
 	CreateLocal(ctx context.Context, c project.Caller, projectID, commitSHA string, bins []deploy.Binary, files *deploy.Files) (deploy.LocalUpload, error)
 }
 
@@ -217,19 +215,6 @@ func (s *Server) createLocalDeployment(w http.ResponseWriter, r *http.Request, c
 	writeJSON(w, http.StatusCreated, out)
 }
 
-// buildUsage answers the team's server build time this month (spec §7). Builds on the developer's machine are free
-// and not counted.
-func (s *Server) buildUsage(w http.ResponseWriter, r *http.Request) {
-	used, included, err := s.Deployments.TeamBuildMinutes(r.Context(), callerFrom(r.Context()), r.PathValue("team"))
-	if err != nil {
-		s.deploymentError(w, r, err)
-		return
-	}
-	now := time.Now().UTC()
-	resets := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)
-	writeJSON(w, http.StatusOK, map[string]any{"used_seconds": used, "included_minutes": included, "resets_on": resets.Format(time.DateOnly)})
-}
-
 func (s *Server) redeployDeployment(w http.ResponseWriter, r *http.Request) {
 	d, err := s.Deployments.Redeploy(r.Context(), callerFrom(r.Context()), r.PathValue("id"))
 	if err != nil {
@@ -338,11 +323,9 @@ type logEndJSON struct {
 	Build     *buildTimeJSON `json:"build,omitempty"`
 }
 
-// buildTimeJSON is a server build's metered time and the team's month so far (spec §7).
+// buildTimeJSON is how long a server build took.
 type buildTimeJSON struct {
-	Seconds         int32 `json:"seconds"`
-	UsedMinutes     int64 `json:"used_minutes"`
-	IncludedMinutes int   `json:"included_minutes"`
+	Seconds int32 `json:"seconds"`
 }
 
 const (
@@ -403,9 +386,7 @@ func (s *Server) deploymentLogs(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				if d.BuildSeconds != nil {
-					if used, included, err := s.Deployments.BuildMinutes(ctx, d.Project.TeamID); err == nil {
-						end.Build = &buildTimeJSON{Seconds: *d.BuildSeconds, UsedMinutes: (used + 59) / 60, IncludedMinutes: included}
-					}
+					end.Build = &buildTimeJSON{Seconds: *d.BuildSeconds}
 				}
 				for _, a := range artifacts {
 					end.Artifacts = append(end.Artifacts, artifactJSON{Service: a.ServiceName, Path: a.ServicePath, Type: a.ServiceType, Size: a.SizeBytes, SHA256: a.Sha256})

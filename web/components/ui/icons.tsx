@@ -9,7 +9,6 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Copy,
-  BadgeCheck,
   Cpu,
   SquareTerminal,
   CreditCard,
@@ -72,7 +71,6 @@ export const icons = {
   more: Ellipsis,
   menu: Menu,
   terminal: SquareTerminal,
-  betaTester: BadgeCheck,
   arrowRight: ArrowRight,
 };
 

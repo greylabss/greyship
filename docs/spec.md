@@ -69,11 +69,10 @@ A feature that would break a rule is redesigned (e.g. made event-driven) or ship
 ## 4. Functional requirements
 
 ### 4.1 Auth & accounts
-- **F-1** Sign up / log in with an emailed 6-digit code, Google, or GitHub. Accounts an admin creates (F-56a) may also sign in with a password (decisions.md 023, 051); nobody picks a password at signup. The first account on an instance becomes its **owner** (F-56) and may always sign up (when `GREYSHIP_OWNER_EMAIL` is set, which the installer always does, only that email may, so a stranger can't claim a fresh instance). After that signup is closed unless the owner opens it (`GREYSHIP_SIGNUP_OPEN=true`), allowlists emails (`GREYSHIP_SIGNUP_ALLOWLIST`) or the instance uses a beta list (below); closed, a stranger sees "This email isn't invited to this Greyship yet. Ask its owner to add it." On our own instance, during the private beta only people on the beta list (everyone who applied at forms.greyship.tech, unless marked declined; decisions.md 049) and emails or domains in `GREYSHIP_SIGNUP_ALLOWLIST` can create an account; anyone else sees "This email isn't invited to this Greyship yet. Ask its owner to add it." If the beta list can't be reached, new signups (except allowlisted ones) see "We couldn't check the invite list just now" and existing accounts sign in as usual. People who already have an account always sign in. Refused Google or GitHub sign-ins show why on the sign-in page.
-- **F-1a** Beta testers keep a **beta tester checkmark** next to their name in the dashboard (sidebar, account menu, Settings), for good. It's set when they sign up, or at a later sign-in if they join the list afterwards.
+- **F-1** Sign in with an email and a password (decisions.md 053). There are no emailed codes, no Google or GitHub sign-in and no self-service signup. The first visit to a new instance shows **Create the owner account** (email, name, password); it works once, and when `GREYSHIP_OWNER_EMAIL` is set (the installer sets it when given `--email`) only that email may create it. The owner becomes the instance's **admin** (F-56) and adds everyone else (F-56a). A forgotten password is reset on the server with `greyship-admin reset-password <email>` (a new random password, printed once, the account signed out everywhere); there is no "forgot password" email.
 - **F-2** CLI login via device flow (`grey login` opens browser, CLI polls).
 - **F-3** Personal API tokens, scoped to a team, revocable.
-- **F-4** Teams: invite by email, roles `owner`, `admin`, `member`, `viewer`. *(Pro/Team plans)*
+- **F-4** Teams: invite by email, roles `owner`, `admin`, `member`, `viewer`. *(Not built: every user has their own personal team for now.)*
 - **F-5** Notifications (decisions.md 046): **deploy succeeded**, **deploy failed** and **new project** reach the person who started the deploy (`grey deploy`, the dashboard, a redeploy or rollback; for a push to GitHub, whoever connected GitHub for the team) or created the project, while they're still on the team. Each arrives three ways:
   - the dashboard **bell**: newest first, unread dot, a click opens the deployment or project; reading the list marks it read;
   - **email**, with a link to the dashboard page; a failure says why and that the live version keeps serving;
@@ -147,7 +146,7 @@ service = "payments"
   - **On Greyship (no Go installed, or `--remote`):** the CLI packages the working dir (honoring `.gitignore` + `.greyshipignore`) and uploads the source. `.git`, `node_modules`, symlinks and every `.env` / `.env.*` file are never uploaded, whatever the ignore files say. The compressed source can be at most 100 MB; above that the CLI lists the biggest files.
 - **F-21** Import from GitHub in the dashboard: install the Greyship GitHub app and pick a repository, or paste a **public** repository's link (`https://github.com/owner/repo`, optionally `/tree/<branch>`) without installing anything, like Render's public Git repositories. **Import** creates and connects the project but doesn't deploy. A review page then shows what the deploy will run (every detected service with its type and why, the release command, skipped folders, or the problem that stops a deploy), lets the person set env vars (names from the repo's `.env.example` are suggested), and has the **Deploy** button. `grey github import` imports and deploys in one step. Every GitHub-connected project has **Deploy latest**, which deploys the branch's newest commit. A commit already live or deploying isn't deployed twice; one whose deploy failed can be deployed again, for example after adding its env vars. Choosing any branch to deploy comes after the beta.
 - **F-22** GitHub integration (decisions.md 042, 043): only repositories connected through the app deploy on push. Public repositories added by link update only with Deploy latest (or `grey github deploy`) and get no commit status. A push to the connected branch (the repo's default branch unless chosen otherwise) deploys to production, built on Greyship's build machines. The commit gets a "Greyship" status on GitHub (pending, then ✓ or ✗) linking to the deployment. GitHub deploys use the project's stored env vars; `.env` files in the repo are never used. *After the beta:* PR → preview deploy with its own URL, commented on the PR, torn down when the PR closes.
-- **F-23** Build on Greyship (F-20's remote mode, and later GitHub and dashboard deploys): on a dedicated build machine sized by plan (§6, decisions.md 039), `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"` per service, then `go vet` (warn only). The build log streams live to `grey deploy` (and the dashboard), which ends with the build time and the month's build minutes (§7). A build may take at most 10 minutes on Free and 15 on paid plans. Modules come from the public Go module proxy and are checked against the Go checksum database; private modules aren't supported yet. Each team's build cache is its own, never shared. A binary built on the developer's machine is checked instead of built: its checksum and size must match what was declared, and the build information Go embeds must say Linux, the platform's CPU, `CGO_ENABLED=0` and `-trimpath`. Anything else fails the deployment with the reason (for example "api was built for darwin/arm64; Greyship runs linux/amd64"). The check catches mistakes, not attackers; every binary runs in the sandbox either way (architecture.md §5).
+- **F-23** Build on Greyship (F-20's remote mode, and later GitHub and dashboard deploys): on a dedicated build machine sized by the instance's configuration (`GREYSHIP_FLY_MACHINE_CPUS`, `GREYSHIP_FLY_MACHINE_MEMORY_MB`; decisions.md 039, 053), `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"` per service, then `go vet` (warn only). The build log streams live to `grey deploy` (and the dashboard), which ends with the build time and the month's build minutes (§7). A build may take at most 10 minutes on Free and 15 on paid plans. Modules come from the public Go module proxy and are checked against the Go checksum database; private modules aren't supported yet. Each team's build cache is its own, never shared. A binary built on the developer's machine is checked instead of built: its checksum and size must match what was declared, and the build information Go embeds must say Linux, the platform's CPU, `CGO_ENABLED=0` and `-trimpath`. Anything else fails the deployment with the reason (for example "api was built for darwin/arm64; Greyship runs linux/amd64"). The check catches mistakes, not attackers; every binary runs in the sandbox either way (architecture.md §5).
 - **F-24** Build fails, or the new version fails its health check → deployment `failed`, previous deployment keeps serving. The log ends by saying so: `nothing changed: the live version (deployment 1a2b3c4d) keeps serving`, or `nothing changed: this project has no live version yet`.
 - **F-25** Health check: `web` services must accept TCP connections on their port (F-30) within 30s (or 200 on `health_path` if set); `worker` services must still be running after a few seconds. Fail → deployment `failed`, no traffic switched, and the app's last output lines are shown. `health_path` arrives with the per-service settings.
 - **F-26** Zero-downtime switch: new instances healthy before old ones drain. `grey deploy` follows the deploy to the end: it shows each instance starting and ends with "Live" once traffic has switched and the previous version is stopping.
@@ -164,7 +163,7 @@ service = "payments"
 - **F-31** Scale to zero: after the last request, instance stays running for the **grace window** (default 30s), then is **paused**. Paused instances stay in memory (pause-first, see F-80) and are **stopped** only when the node needs the memory (least recently used first) or after the **idle timeout** (default 24h).
 - **F-32** Requests to a stopped/paused service are held at the router (max 30s) while an instance starts.
 - **F-33** Concurrency: one instance handles up to `concurrency` in-flight requests (default 100). Above that, the router requests another instance up to `max_instances`.
-- **F-34** `min_instances ≥ 1` keeps a service always warm (paid plans).
+- **F-34** `min_instances ≥ 1` keeps a service always warm.
 - **F-35** `worker` services are event-driven and scale to zero by default. A sleeping worker is woken by: a message on its built-in queue (F-35a), an internal call to `<worker>.internal`, or a schedule. It goes back to sleep after its queue is empty and the grace window passes.
 - **F-35a** Built-in queue: every project gets durable queues. Apps enqueue with `POST /v1/queues/<name>/messages` (or the `greyship.dev/jobs` package) and workers receive messages from `queue.internal`, with acknowledgements, retries with backoff and a dead-letter queue.
 - **F-35b** Always-on workers (e.g. consuming an external Kafka or a websocket feed) are an explicit opt-in: `min_instances = 1`, shown everywhere as "always on · billed 24/7". Never the default.
@@ -232,19 +231,17 @@ Resolution order for one service in one environment (later wins):
 
 ### 4.7 Logs, metrics & Go insight
 - **F-60** Live logs: `grey logs -f [--service x]` and dashboard stream; stdout/stderr per instance, JSON logs pretty-printed.
-- **F-61** Log search by text, time, level, service. Retention: Free 1 day, Pro 7 days, Team 30 days.
+- **F-61** Log search by text, time, level, service. Retention is the instance's own setting.
 - **F-62** Request metrics: count, status codes, p50/p95/p99 latency, cold starts and their duration.
 - **F-63** Instance metrics: CPU, memory, instance count over time.
 - **F-64** Go runtime metrics (no code change): goroutines, heap in use, GC pause, GC count.
 - **F-65** *(Pro)* On-demand profiles: `grey pprof cpu|heap|goroutine <service>`; dashboard flame graph. Requires `import _ "greyship.dev/agent"`.
 - **F-66** *(Pro)* Alerts: goroutine leak (monotonic growth), memory near limit, error-rate spike, crash loop. Delivery via email + webhook.
 
-### 4.8 Billing
-- **F-70** Plans: Free, Pro, Team (see §7).
-- **F-71** Usage metered per second of running instance (vCPU-s, GB-s), per request, per GB egress.
-- **F-72** Spend cap per team; default on. At cap: services pause, owner emailed.
-- **F-73** Payments: Stripe (cards, USD) and Paystack (NGN cards, bank transfer). Prepaid credits supported.
-- **F-74** Usage page: today, this month, projected, per project.
+### 4.8 Limits per user
+- **F-70** There are no plans, prices or billing in Greyship (decisions.md 050, 053). Everyone on an instance can build and run as much as the server allows, unless the instance's admin limits them.
+- **F-71** The admin can limit, per user, the **memory** and the **CPU** their running apps may use together, and how many **builds** they run at once (F-56a). A new user has no limits. A service that would pass a limit isn't started: a release fails with `memory limit reached: your apps use 700 of 1024 MB and api needs 512 MB more. Ask the instance admin to raise your limit, or stop something`, and the live version keeps serving; an app that wants to scale up beyond it stays at the size it has. Paused instances count (they keep their memory); the release command (migrations) doesn't. A deploy briefly runs the old and the new version side by side, so a limit needs some room above the apps' normal use.
+- **F-72** A user sees their use and their limits on the Usage page and, when a memory limit is set, in the sidebar (`GET /v1/me/usage`).
 
 ### 4.9 CLI
 Commands (v1): `login`, `logout`, `whoami`, `init`, `dev`, `deploy`, `ps`, `logs`, `env`, `domains`, `rollback`, `redeploy`, `open`, `pprof`, `projects`, `teams`, `tokens`.
@@ -264,8 +261,8 @@ Commands (v1): `login`, `logout`, `whoami`, `init`, `dev`, `deploy`, `ps`, `logs
 
 ### 4.9a Operator admin
 - **F-56** The instance owner (the first account, or the one `GREYSHIP_OWNER_EMAIL` names; decisions.md 048, 050) has a read-only admin view at `/admin`, signed in to the dashboard (API tokens never count). It finds any deployment by its id or the start of it, or by project or team slug, and shows everything needed to debug it: status and error, team, project and who started it, source and build details (runner, machine, time, commit, repo, source and files objects), binaries, instances (node, state, error), the related jobs (attempts, last error), the full build and release log, and the instances' recent output. It also shows totals, the latest failed deployments, nodes and their heartbeats, the job queue and failed jobs, and every user with their teams. Everyone else gets 404. It changes nothing.
-- **F-56a** An admin manages the instance's users in the dashboard (`/admin/users`, CLI parity exception like F-56: the API is the same). **Add user**: email, optional name, optional password (10 to 128 characters, with a generate button) and an Admin checkbox; the new account gets a personal team and signs in with the password, or with an emailed code when it has none. Per user: **Reset password** (a new random password, shown once) and **Make admin / Remove admin**; the last admin can't be removed. The list shows each user's role and sign-in method. Anyone with a session can set or change their own password in Settings. Wrong passwords are limited to 8 per email and 30 per IP in 15 minutes.
-- **F-56b** Email is turned on in the dashboard (`/admin/email`, admin only): a Resend API key, the sending domain (verified in Resend), a sender name and an on/off switch, plus **Send test email** (to the admin, showing the provider's error if it fails). The key is stored encrypted and never shown again; leaving it empty when saving keeps it. Mail is sent from `login@<domain>` and `notifications@<domain>`. Settings saved here replace `GREYSHIP_RESEND_API_KEY`, which still works when nothing is saved. With email off, sign-in codes can't be delivered and notification emails aren't sent (the bell and browser push still work); Google and GitHub sign-in and passwords (F-56a) don't need email.
+- **F-56a** An admin manages the instance's users in the dashboard (`/admin/users`, CLI parity exception like F-56: the API is the same). **Add user**: email, optional name, a password (10 to 128 characters, with a generate button) and an Admin checkbox; the new account gets a personal team and signs in with the password. Per user: **Limits** (memory in MB, CPU in cores, builds at once; empty means no limit; F-71), **Reset password** (a new random password, shown once) and **Make admin / Remove admin**; the last admin can't be removed. The list shows each user's role and what their apps use now next to their limits. Anyone signed in can change their own password in Settings (the current one is needed). Wrong passwords are limited to 8 per email and 30 per IP in 15 minutes.
+- **F-56b** Email is optional and only sends deploy notifications (success, failure, new project). It is turned on in the dashboard (`/admin/email`, admin only): a Resend API key, the sending domain (verified in Resend), a sender name and an on/off switch, plus **Send test email** (to the admin, showing the provider's error if it fails). The key is stored encrypted and never shown again; leaving it empty when saving keeps it. Mail is sent from `notifications@<domain>`. Settings saved here replace `GREYSHIP_RESEND_API_KEY`, which still works when nothing is saved. With email off, nothing is mailed; the bell and browser push still work. Signing in never needs email.
 
 ### 4.10 Dashboard
 Pages: Overview (projects + usage), Project (services, latest deploy, URLs), Deployments (list, logs, rollback), Logs, Metrics, Go Runtime, Env Vars, Domains, Settings, Team, Billing.
@@ -320,50 +317,25 @@ For teams running an API gateway in front of private services.
 
 ---
 
-## 6. Limits by plan
+## 6. Limits
 
-| | Free | Pro | Team |
-| --- | --- | --- | --- |
-| Projects | 3 | 25 | 100 |
-| Memory per instance | 128MB | up to 1GB | up to 2GB |
-| CPU per instance | up to 1 CPU | up to 1 CPU | up to 1 CPU |
-| Max instances per service | 2 | 10 | 50 |
-| `min_instances` | 0 only | yes | yes |
-| Custom domains | 1 | 10/project | 50/project |
-| Log retention | 1 day | 7 days | 30 days |
-| pprof + alerts | — | ✓ | ✓ |
-| Preview deploys | — | ✓ | ✓ |
-| Seats | 1 | 1 | unlimited |
-| Source upload per deploy (compressed) | 100MB | 100MB | 100MB |
-| Build time (server builds) | 10 min | 15 min | 15 min |
-| Build machine (server builds) | 2 dedicated CPUs, 4GB | 4 dedicated CPUs, 8GB | 8 dedicated CPUs, 16GB |
-| Build minutes included / month | 100 | 500 | 1,500 per team |
-| Concurrent builds | 1 | 2 | 4 |
-| Support | Community | Email | Priority |
+Greyship has no plans. What every deploy is subject to, on any instance:
+
+| | |
+| --- | --- |
+| Source upload per deploy (compressed) | 100MB |
+| Memory per instance | set by the service (`memory` in `greyship.toml`), up to the node's memory |
+| Max instances per service | set by the service (`max_instances`) |
+| Build time (server builds) | `GREYSHIP_BUILD_TIMEOUT`, 10 minutes by default |
+| Concurrent builds | one per builder worker, and per user whatever the admin allows (F-71) |
+
+On top of that the instance's admin may limit each user's memory, CPU and concurrent builds (F-71).
 
 ---
 
-## 7. Pricing (starting point — revise after measuring unit cost)
+## 7. Pricing
 
-| Plan | Price | Includes |
-| --- | --- | --- |
-| **Free** | $0, no card | 100k requests, 50 vCPU-hours, 100 GB-hours, 5GB egress /mo |
-| **Pro** | $8/mo | $8 of usage included, then pay as you go |
-| **Team** | $25/user/mo | $20 usage per seat, team features |
-| **Enterprise** | Custom | Dedicated build machines, custom limits and build minutes, highest queue priority |
-
-**Build minutes** (decisions.md 039). Server builds (no Go installed, `--remote`, GitHub and dashboard deploys) run on dedicated build machines; builds on your own machine with `grey deploy` are free and don't count. Minutes are measured from when the build starts on a machine until its binaries are uploaded, not time spent queued.
-
-| Plan | Included / month | Beyond that |
-| --- | --- | --- |
-| Free | 100 | Server builds are refused until the month resets, with a message saying so; local builds keep working |
-| Pro | 500 | $0.01 / min, billed as usage under the spend cap |
-| Team | 1,500 per team | $0.015 / min, billed as usage under the spend cap |
-| Enterprise | Custom | Custom |
-
-Teams get an email at 80% and 100% of their included minutes. After each server build the CLI prints the time and the month's total, e.g. `build: 42s · 312/500 min this month`, and the dashboard shows the same: a build-minutes meter on the Usage page and, on Free, in the sidebar, with the day it resets. Build minutes beyond the included ones count against the plan's included usage credit at these rates, so a Team seat's credit covers both running time and extra builds.
-
-Pay-as-you-go rates are set from measured cost per instance-second with a **60–70% gross margin** target. Naira prices shown at a fixed local price, not a live FX conversion.
+None. Greyship is open source (AGPL-3.0) and runs on your own server (decisions.md 050). Builds on your own machine with `grey deploy` and on the server are never metered. A paid hosted version may come later and would be a separate product.
 
 ---
 

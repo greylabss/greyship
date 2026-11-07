@@ -17,9 +17,9 @@ Requests are held for up to 30 seconds while a service wakes or starts.
 ## Scaling up
 
 One instance handles up to **100 requests at a time**. Beyond that, Greyship starts another instance, up to the
-service's maximum (**2** on Free during the beta). Each new instance also goes back to sleep when traffic drops.
+service's maximum (`max_instances`). Each new instance also goes back to sleep when traffic drops.
 
-Each instance gets **128 MB** of memory and up to **1 CPU** on Free. `GOMAXPROCS` and `GOMEMLIMIT` are set to match,
+Each instance gets **128 MB** of memory and up to **1 CPU** unless the service asks for more. `GOMAXPROCS` and `GOMEMLIMIT` are set to match,
 so Go's scheduler and garbage collector work within the limits.
 
 ## Workers

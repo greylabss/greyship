@@ -4,7 +4,6 @@ import { NotificationSettings } from "@/components/team/notification-settings";
 import { RevokeToken } from "@/components/team/revoke-token";
 import { TokenDialog } from "@/components/team/token-dialog";
 import { ActionButton } from "@/components/ui/action-button";
-import { BetaBadge } from "@/components/ui/beta-badge";
 import { CommandHint } from "@/components/ui/command-hint";
 import { DataSection } from "@/components/ui/data-section";
 import { PageHeader, SectionHeader } from "@/components/ui/page-header";
@@ -34,10 +33,7 @@ export default function SettingsPage({ params }: PageProps<"/[team]/settings">) 
       {liveMode && (
         <section className="flex flex-col gap-3">
           <SectionHeader title="Password" />
-          <p className="text-13 text-muted">Optional. Without one you sign in with an email code.</p>
-          <DataSection what="password" fallback={<Skeleton className="h-24 w-full rounded-panel" />}>
-            <Password />
-          </DataSection>
+          <ChangePassword />
         </section>
       )}
 
@@ -71,16 +67,7 @@ async function Account({ team: teamSlug }: { team: Promise<string> }) {
   const field = "h-10 rounded-input border border-border-strong bg-surface px-3 text-14";
   return (
     <section className="flex flex-col gap-4 rounded-panel border border-border p-5">
-      <SectionHeader
-        title="Account"
-        aside={
-          me.betaTester ? (
-            <span className="flex items-center gap-1.5 text-13 text-muted">
-              <BetaBadge /> Beta tester
-            </span>
-          ) : undefined
-        }
-      />
+      <SectionHeader title="Account" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-12 text-muted">Name</span>
@@ -137,9 +124,4 @@ async function Tokens() {
             </tbody>
           </Table>
   );
-}
-
-async function Password() {
-  const me = await api.me();
-  return <ChangePassword hasPassword={me.hasPassword ?? false} />;
 }

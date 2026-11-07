@@ -599,3 +599,75 @@ func TestRollbackSkipsTheReleaseCommand(t *testing.T) {
 		t.Fatalf("artifacts = %+v, want the first deployment's binaries", arts)
 	}
 }
+
+// An admin-set memory limit stops a release that doesn't fit, with a message that says why, and stops scaling past it.
+func TestMemoryLimit(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	w := newWorld(t, 4096)
+	setLimit := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := w.pool.Exec(ctx, "UPDATE teams SET "+sql+" WHERE id = $1", append([]any{w.project.TeamID}, args...)...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The api service fits, the worker doesn't: the release fails and says which limit.
+	agent := &fakeAgent{w: w}
+	go agent.run(ctx)
+	setLimit("max_memory_mb = $2", 200)
+	d := w.built()
+	if err := w.release(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := w.q.GetDeployment(ctx, d.ID)
+	if got.Status != "failed" || got.Error == nil || !strings.Contains(*got.Error, "memory limit reached") || !strings.Contains(*got.Error, "of 200 MB") {
+		t.Fatalf("over the limit: %s %v", got.Status, got.Error)
+	}
+
+	// No limit set: nothing is refused.
+	setLimit("max_memory_mb = NULL")
+	d2 := w.built()
+	if err := w.release(ctx, d2); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "an unlimited team's release", func() bool { return w.status(d2.ID) == "ready" })
+
+	// At the limit, scaling up is skipped; with room, it works.
+	use, err := w.q.TeamResourceUse(ctx, w.project.TeamID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var api store.ListDeploymentInstancesRow
+	for _, i := range w.instances(d2.ID) {
+		if i.ServiceName == "api" {
+			api = i
+		}
+	}
+	setLimit("max_memory_mb = $2", int32(use.MemoryMb)) //nolint:gosec // small test value
+	w.scale(ctx, api.ServiceID, "busy")
+	if n := len(w.live(api.ServiceID)); n != 1 {
+		t.Fatalf("scaled past the memory limit: %d instances", n)
+	}
+	setLimit("max_memory_mb = $2", int32(use.MemoryMb)+1024) //nolint:gosec // small test value
+	w.scale(ctx, api.ServiceID, "busy")
+	waitFor(t, "a second instance with room", func() bool { return len(w.live(api.ServiceID)) == 2 })
+}
+
+func TestCPULimit(t *testing.T) {
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	w := newWorld(t, 4096)
+	go (&fakeAgent{w: w}).run(ctx)
+	if _, err := w.pool.Exec(ctx, "UPDATE teams SET max_cpu_millis = 100 WHERE id = $1", w.project.TeamID); err != nil {
+		t.Fatal(err)
+	}
+	d := w.built()
+	if err := w.release(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := w.q.GetDeployment(ctx, d.ID)
+	if got.Status != "failed" || got.Error == nil || !strings.Contains(*got.Error, "CPU limit reached") {
+		t.Fatalf("over the CPU limit: %s %v", got.Status, got.Error)
+	}
+}

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { ApiError, call } from "@/lib/greyship-api";
 
-export function ChangePassword({ hasPassword }: { hasPassword: boolean }) {
+export function ChangePassword() {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [error, setError] = useState("");
@@ -35,17 +35,15 @@ export function ChangePassword({ hasPassword }: { hasPassword: boolean }) {
         void submit();
       }}
     >
-      {hasPassword && (
-        <Field label="Current password">
-          <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
-        </Field>
-      )}
+      <Field label="Current password">
+        <Input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
+      </Field>
       <Field label="New password" hint="10 to 128 characters." error={error || undefined}>
         <Input type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" />
       </Field>
       <div>
-        <Button type="submit" disabled={busy || !next}>
-          {busy ? "Saving…" : hasPassword ? "Change password" : "Set password"}
+        <Button type="submit" disabled={busy || !current || !next}>
+          {busy ? "Saving…" : "Change password"}
         </Button>
       </div>
     </form>

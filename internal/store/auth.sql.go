@@ -10,73 +10,6 @@ import (
 	"time"
 )
 
-const consumeLoginCode = `-- name: ConsumeLoginCode :exec
-UPDATE login_codes SET consumed_at = $2 WHERE id = $1
-`
-
-type ConsumeLoginCodeParams struct {
-	ID         string
-	ConsumedAt *time.Time
-}
-
-func (q *Queries) ConsumeLoginCode(ctx context.Context, arg ConsumeLoginCodeParams) error {
-	_, err := q.db.Exec(ctx, consumeLoginCode, arg.ID, arg.ConsumedAt)
-	return err
-}
-
-const countCodesForEmailSince = `-- name: CountCodesForEmailSince :one
-SELECT count(*) FROM login_codes WHERE email = $1 AND created_at > $2
-`
-
-type CountCodesForEmailSinceParams struct {
-	Email     string
-	CreatedAt time.Time
-}
-
-func (q *Queries) CountCodesForEmailSince(ctx context.Context, arg CountCodesForEmailSinceParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCodesForEmailSince, arg.Email, arg.CreatedAt)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const countCodesForIPSince = `-- name: CountCodesForIPSince :one
-SELECT count(*) FROM login_codes WHERE ip = $1 AND created_at > $2
-`
-
-type CountCodesForIPSinceParams struct {
-	Ip        string
-	CreatedAt time.Time
-}
-
-func (q *Queries) CountCodesForIPSince(ctx context.Context, arg CountCodesForIPSinceParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCodesForIPSince, arg.Ip, arg.CreatedAt)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
-const createLoginCode = `-- name: CreateLoginCode :exec
-INSERT INTO login_codes (email, code_hash, ip, expires_at) VALUES ($1, $2, $3, $4)
-`
-
-type CreateLoginCodeParams struct {
-	Email     string
-	CodeHash  []byte
-	Ip        string
-	ExpiresAt time.Time
-}
-
-func (q *Queries) CreateLoginCode(ctx context.Context, arg CreateLoginCodeParams) error {
-	_, err := q.db.Exec(ctx, createLoginCode,
-		arg.Email,
-		arg.CodeHash,
-		arg.Ip,
-		arg.ExpiresAt,
-	)
-	return err
-}
-
 const createSession = `-- name: CreateSession :exec
 INSERT INTO sessions (user_id, token_hash, user_agent, expires_at) VALUES ($1, $2, $3, $4)
 `
@@ -107,6 +40,15 @@ func (q *Queries) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	return err
 }
 
+const deleteUserSessions = `-- name: DeleteUserSessions :exec
+DELETE FROM sessions WHERE user_id = $1
+`
+
+func (q *Queries) DeleteUserSessions(ctx context.Context, userID string) error {
+	_, err := q.db.Exec(ctx, deleteUserSessions, userID)
+	return err
+}
+
 const getSession = `-- name: GetSession :one
 SELECT id, user_id, token_hash, user_agent, created_at, last_seen_at, expires_at FROM sessions WHERE token_hash = $1 AND expires_at > $2
 `
@@ -129,45 +71,6 @@ func (q *Queries) GetSession(ctx context.Context, arg GetSessionParams) (Session
 		&i.ExpiresAt,
 	)
 	return i, err
-}
-
-const latestLoginCode = `-- name: LatestLoginCode :one
-SELECT id, email, code_hash, attempts, ip, expires_at, consumed_at, created_at FROM login_codes
-WHERE email = $1 AND consumed_at IS NULL AND expires_at > $2
-ORDER BY created_at DESC LIMIT 1
-FOR UPDATE
-`
-
-type LatestLoginCodeParams struct {
-	Email     string
-	ExpiresAt time.Time
-}
-
-func (q *Queries) LatestLoginCode(ctx context.Context, arg LatestLoginCodeParams) (LoginCode, error) {
-	row := q.db.QueryRow(ctx, latestLoginCode, arg.Email, arg.ExpiresAt)
-	var i LoginCode
-	err := row.Scan(
-		&i.ID,
-		&i.Email,
-		&i.CodeHash,
-		&i.Attempts,
-		&i.Ip,
-		&i.ExpiresAt,
-		&i.ConsumedAt,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const recordCodeAttempt = `-- name: RecordCodeAttempt :one
-UPDATE login_codes SET attempts = attempts + 1 WHERE id = $1 RETURNING attempts
-`
-
-func (q *Queries) RecordCodeAttempt(ctx context.Context, id string) (int32, error) {
-	row := q.db.QueryRow(ctx, recordCodeAttempt, id)
-	var attempts int32
-	err := row.Scan(&attempts)
-	return attempts, err
 }
 
 const touchSession = `-- name: TouchSession :exec

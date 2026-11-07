@@ -34,13 +34,8 @@ type Config struct {
 	Addr         string
 	DatabaseURL  string
 	DashboardURL string
-	SignupAllow  string // GREYSHIP_SIGNUP_ALLOWLIST: emails or @domains that may create accounts; empty for anyone
-	SignupOpen   bool   // GREYSHIP_SIGNUP_OPEN: anyone may sign up; otherwise only the first account, the allowlist and the beta list
 	HTTPOnly     bool   // GREYSHIP_HTTP_ONLY: no TLS yet (a fresh install on a bare IP); the owner adds a domain later
-	PlansOn      bool   // GREYSHIP_PLANS: teams get the Free plan and its limits; off, they get Unlimited (decisions.md 050)
 	OwnerEmail   string // GREYSHIP_OWNER_EMAIL: this account is made an instance owner at startup
-	BetaURL      string // GREYSHIP_BETA_URL: the private-beta app whose list lets testers sign up; empty for none
-	BetaSecret   string // GREYSHIP_BETA_SECRET: shared with the beta app (its BETA_API_SECRET)
 	ProxySecret  string // GREYSHIP_PROXY_SECRET: shared with the dashboard's /v1 proxy
 	CookieSecret []byte
 	ResendAPIKey string
@@ -49,8 +44,6 @@ type Config struct {
 	VAPIDKey     string // GREYSHIP_VAPID_PRIVATE_KEY: browser push signing key; empty turns push off
 	VAPIDSubject string // contact the push services may use, mailto: or https:
 	OutboxDir    string
-	Google       OAuthClient
-	GitHub       OAuthClient
 	Storage      Storage
 	AppsDomain   string
 	AppsPort     string
@@ -70,13 +63,8 @@ func Load(getenv func(string) string) (Config, error) {
 		Addr:         get("API_ADDR", ":8080"),
 		DatabaseURL:  get("DATABASE_URL", ""),
 		DashboardURL: strings.TrimRight(get("DASHBOARD_URL", "http://localhost:3000"), "/"),
-		SignupAllow:  get("SIGNUP_ALLOWLIST", ""),
-		SignupOpen:   get("SIGNUP_OPEN", "") == "true",
 		HTTPOnly:     get("HTTP_ONLY", "") == "true",
-		PlansOn:      get("PLANS", "") == "on",
 		OwnerEmail:   strings.ToLower(strings.TrimSpace(get("OWNER_EMAIL", ""))),
-		BetaURL:      get("BETA_URL", ""),
-		BetaSecret:   get("BETA_SECRET", ""),
 		ProxySecret:  get("PROXY_SECRET", ""),
 		ResendAPIKey: get("RESEND_API_KEY", ""),
 		MailFrom:     get("MAIL_FROM", "Greyship <login@greyship.tech>"),
@@ -84,8 +72,6 @@ func Load(getenv func(string) string) (Config, error) {
 		VAPIDKey:     get("VAPID_PRIVATE_KEY", ""),
 		VAPIDSubject: get("VAPID_SUBJECT", "mailto:support@greyship.tech"),
 		OutboxDir:    get("OUTBOX_DIR", "tmp/outbox"),
-		Google:       OAuthClient{get("GOOGLE_CLIENT_ID", ""), get("GOOGLE_CLIENT_SECRET", "")},
-		GitHub:       OAuthClient{get("GITHUB_CLIENT_ID", ""), get("GITHUB_CLIENT_SECRET", "")},
 	}
 	cfg.Storage = loadStorage(get, cfg.Dev)
 	// Must match the router's, which serves these names.
@@ -98,14 +84,6 @@ func Load(getenv func(string) string) (Config, error) {
 	var errs []error
 	if cfg.DatabaseURL == "" {
 		errs = append(errs, errors.New("GREYSHIP_DATABASE_URL is required"))
-	}
-	if cfg.BetaURL != "" {
-		if u, err := url.Parse(cfg.BetaURL); err != nil || u.Host == "" || (u.Scheme != "https" && !cfg.Dev) {
-			errs = append(errs, fmt.Errorf("GREYSHIP_BETA_URL must be an https URL, got %q", cfg.BetaURL))
-		}
-		if len(cfg.BetaSecret) < 32 {
-			errs = append(errs, errors.New("GREYSHIP_BETA_SECRET must be at least 32 characters (openssl rand -hex 32) when GREYSHIP_BETA_URL is set"))
-		}
 	}
 	if u, err := url.Parse(cfg.DashboardURL); err != nil || u.Scheme == "" || u.Host == "" {
 		errs = append(errs, fmt.Errorf("GREYSHIP_DASHBOARD_URL must be an absolute URL, got %q", cfg.DashboardURL))
@@ -160,6 +138,8 @@ type Fly struct {
 	ImagePrefix string
 	MaxMachines int64
 	VolumeGB    int
+	CPUs        int // CPUs of a build machine: 2, 4 or 8
+	MemoryMB    int
 	APIURL      string // the public API build machines report to
 }
 
@@ -213,6 +193,12 @@ func LoadBuilder(getenv func(string) string) (Builder, error) {
 	}
 	if b.Fly.MaxMachines, err = strconv.ParseInt(get("FLY_MAX_MACHINES", "8"), 10, 64); err != nil || b.Fly.MaxMachines < 1 {
 		errs = append(errs, errors.New("GREYSHIP_FLY_MAX_MACHINES must be a positive number"))
+	}
+	if b.Fly.CPUs, err = strconv.Atoi(get("FLY_MACHINE_CPUS", "4")); err != nil || (b.Fly.CPUs != 2 && b.Fly.CPUs != 4 && b.Fly.CPUs != 8) {
+		errs = append(errs, errors.New("GREYSHIP_FLY_MACHINE_CPUS must be 2, 4 or 8"))
+	}
+	if b.Fly.MemoryMB, err = strconv.Atoi(get("FLY_MACHINE_MEMORY_MB", "8192")); err != nil || b.Fly.MemoryMB < 2048 {
+		errs = append(errs, errors.New("GREYSHIP_FLY_MACHINE_MEMORY_MB must be at least 2048"))
 	}
 	if b.Fly.VolumeGB, err = strconv.Atoi(get("FLY_VOLUME_GB", "10")); err != nil || b.Fly.VolumeGB < 1 {
 		errs = append(errs, errors.New("GREYSHIP_FLY_VOLUME_GB must be a positive number"))

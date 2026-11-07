@@ -29,7 +29,6 @@ import (
 	"greyship.tech/internal/deploy"
 	"greyship.tech/internal/detect"
 	"greyship.tech/internal/pack"
-	"greyship.tech/internal/plan"
 	"greyship.tech/internal/store"
 )
 
@@ -213,9 +212,6 @@ func (b *Builder) build(ctx context.Context, q *store.Queries, d store.Deploymen
 	for _, w := range found.Warnings {
 		log.System("warning: " + w)
 	}
-	if err := b.checkMinutes(ctx, q, p.TeamID); err != nil {
-		return nil, err
-	}
 	log.System("building with Go " + goVersion)
 
 	spec := Spec{ID: d.ID, GoVersion: goVersion, GOARCH: b.GOARCH, TeamID: p.TeamID, ProjectID: p.ID, Targets: targets}
@@ -292,28 +288,6 @@ func (b *Builder) bundleFiles(ctx context.Context, q *store.Queries, d store.Dep
 	}
 	log.System("files: " + res.Summary())
 	return nil
-}
-
-// checkMinutes refuses a server build when the team's plan has no overage and its build minutes are used up
-// (spec §7). Building on the developer's machine never counts.
-func (b *Builder) checkMinutes(ctx context.Context, q *store.Queries, teamID string) error {
-	teamPlan, err := q.TeamPlan(ctx, teamID)
-	if err != nil {
-		return fmt.Errorf("load plan of team %s: %w", teamID, err)
-	}
-	limits := plan.Builds(teamPlan)
-	if limits.Unlimited || limits.OverageCentsPerM > 0 {
-		return nil
-	}
-	used, err := q.TeamBuildSeconds(ctx, teamID)
-	if err != nil {
-		return fmt.Errorf("load build minutes of team %s: %w", teamID, err)
-	}
-	if used < int64(limits.IncludedMinutes)*60 {
-		return nil
-	}
-	next := time.Date(b.Now().Year(), b.Now().Month()+1, 1, 0, 0, 0, 0, time.UTC)
-	return failf("this team's %d free build minutes are used up until %s. Install Go and grey deploy builds on your machine for free, or upgrade to Pro", limits.IncludedMinutes, next.Format("2 January"))
 }
 
 func nonEmpty(s string) *string {

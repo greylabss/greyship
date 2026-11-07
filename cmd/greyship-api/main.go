@@ -16,7 +16,6 @@ import (
 	"greyship.tech/internal/admin"
 	"greyship.tech/internal/api"
 	"greyship.tech/internal/auth"
-	"greyship.tech/internal/beta"
 	"greyship.tech/internal/build/fly"
 	"greyship.tech/internal/bus"
 	"greyship.tech/internal/config"
@@ -28,7 +27,6 @@ import (
 	"greyship.tech/internal/objstore"
 	"greyship.tech/internal/project"
 	"greyship.tech/internal/secrets"
-	"greyship.tech/internal/store"
 	"greyship.tech/internal/webpush"
 )
 
@@ -43,11 +41,43 @@ func main() {
 		fmt.Println(key)
 		return
 	}
+	// greyship-api reset-password <email> gives an account a new random password and prints it. Whoever can run it
+	// on the server is the operator: this is how a forgotten password is recovered.
+	if len(os.Args) == 3 && os.Args[1] == "reset-password" {
+		if err := resetPassword(os.Args[2]); err != nil {
+			fmt.Fprintln(os.Stderr, "reset-password:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
 		logger.Error("greyship-api stopped", "err", err)
 		os.Exit(1)
 	}
+}
+
+func resetPassword(email string) error {
+	cfg, err := config.Load(os.Getenv)
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	password, err := auth.NewService(pool, time.Now, cfg.OwnerEmail).ResetPassword(ctx, email)
+	if errors.Is(err, auth.ErrNoUser) {
+		return fmt.Errorf("no account with the email %s", email)
+	}
+	if err != nil {
+		return err
+	}
+	fmt.Printf("New password for %s: %s\nThey are signed out everywhere. Ask them to change it in Settings.\n", email, password)
+	return nil
 }
 
 func run(logger *slog.Logger) error {
@@ -85,29 +115,7 @@ func run(logger *slog.Logger) error {
 	if cfg.ResendAPIKey != "" {
 		sender.Env = mail.NewResend(cfg.ResendAPIKey, cfg.MailFrom)
 	} else {
-		logger.Info("no email provider set: turn email on in the dashboard (Admin > Email); until then login codes are written to files in the outbox folder, readable by the server's owner", "dir", cfg.OutboxDir)
-	}
-
-	// Mail is sent in the background so login requests never wait on the provider.
-	// Stopped on return, after the HTTP server has shut down, so it can drain what is queued.
-	mailer := mail.NewQueue(sender, 1024, logger)
-	queueCtx, stopQueue := context.WithCancel(context.Background())
-	queueDone := make(chan struct{})
-	go func() {
-		defer close(queueDone)
-		mailer.Run(queueCtx, 10*time.Second)
-	}()
-	defer func() {
-		stopQueue()
-		<-queueDone
-	}()
-
-	providers := map[string]auth.Provider{}
-	if cfg.Google.Enabled() {
-		providers["google"] = auth.Google(cfg.Google.ClientID, cfg.Google.ClientSecret, cfg.DashboardURL+"/v1/auth/oauth/google/callback", auth.GoogleEndpoints)
-	}
-	if cfg.GitHub.Enabled() {
-		providers["github"] = auth.GitHub(cfg.GitHub.ClientID, cfg.GitHub.ClientSecret, cfg.DashboardURL+"/v1/auth/oauth/github/callback", auth.GitHubEndpoints)
+		logger.Info("email is off: turn it on in the dashboard (Admin > Email) to get deploy notifications by mail")
 	}
 
 	projects := project.NewService(pool)
@@ -135,16 +143,6 @@ func run(logger *slog.Logger) error {
 		ghDeploys = &github.Service{Pool: pool, GitHub: app, Projects: projects, Signer: signer, Logger: logger}
 	}
 
-	signup := auth.Signup{Open: cfg.SignupOpen || cfg.Dev, Allow: auth.ParseAllowlist(cfg.SignupAllow), PlansOn: cfg.PlansOn, OwnerEmail: cfg.OwnerEmail}
-	if cfg.OwnerEmail != "" {
-		if err := store.New(pool).MakeOwnerByEmail(ctx, cfg.OwnerEmail); err != nil {
-			return fmt.Errorf("make %s an owner: %w", cfg.OwnerEmail, err)
-		}
-	}
-	if cfg.BetaURL != "" {
-		signup.Testers = beta.New(cfg.BetaURL, cfg.BetaSecret)
-	}
-
 	var pusher notify.Pusher
 	inbox := &notify.Inbox{Pool: pool}
 	if cfg.VAPIDKey != "" {
@@ -170,7 +168,7 @@ func run(logger *slog.Logger) error {
 		<-workerDone
 	}()
 
-	authService := auth.NewService(pool, mailer, time.Now, signup)
+	authService := auth.NewService(pool, time.Now, cfg.OwnerEmail)
 	handler := api.New(api.Options{
 		Auth:          authService,
 		Accounts:      authService,
@@ -184,7 +182,6 @@ func run(logger *slog.Logger) error {
 		Admin:         &admin.Service{Pool: pool},
 		PushKey:       inbox.PushKey,
 		WebhookSecret: ghCfg.WebhookSecret,
-		Providers:     providers,
 		Signer:        auth.Signer{Key: cfg.CookieSecret, Now: time.Now},
 		DashboardURL:  cfg.DashboardURL,
 		AppsDomain:    cfg.AppsDomain,
@@ -199,7 +196,7 @@ func run(logger *slog.Logger) error {
 	srv := &http.Server{Addr: cfg.Addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 2 * time.Minute}
 	errc := make(chan error, 1)
 	go func() {
-		logger.Info("greyship-api listening", "addr", cfg.Addr, "oauth_providers", len(providers))
+		logger.Info("greyship-api listening", "addr", cfg.Addr)
 		errc <- srv.ListenAndServe()
 	}()
 

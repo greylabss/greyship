@@ -82,10 +82,10 @@ listed so your file won't need changing:
 
 | Setting | Planned meaning |
 | --- | --- |
-| `memory` | memory per instance, e.g. `"256MB"` (Free: 128MB) |
+| `memory` | memory per instance, e.g. `"256MB"` |
 | `cpu` | CPU per instance, up to `1` |
-| `min_instances` | instances kept running even with no traffic (paid plans; billed 24/7) |
-| `max_instances` | most instances under load (Free: 2) |
+| `min_instances` | instances kept running even with no traffic (they hold their memory and CPU all the time) |
+| `max_instances` | most instances under load |
 | `concurrency` | in-flight requests per instance before another starts (default 100) |
 | `grace` | how long an idle instance stays up before pausing (default `"30s"`) |
 | `health_path` | a path that must answer 200 before a deploy goes live |

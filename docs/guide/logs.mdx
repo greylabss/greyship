@@ -20,7 +20,7 @@ grey logs -n 500           # more history
 JSON log lines (for example from `log/slog`'s JSON handler) are shown as `LEVEL message key=value`. In the dashboard,
 **Logs** shows the same, with filters by service and level and a live mode.
 
-- Logs are kept for **1 day** on Free.
+- Logs are kept for **1 day**.
 - A service printing more than 1,000 lines a second has the extra lines counted and replaced by one note, so one noisy
   app can't drown the rest.
 - Lines longer than 4 KB are cut.

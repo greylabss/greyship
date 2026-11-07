@@ -20,17 +20,13 @@ import { AlwaysOnBadge } from "@/components/ui/status";
 import { Button } from "@/components/ui/button";
 import { CommandHint } from "@/components/ui/command-hint";
 import { Field, Input } from "@/components/ui/field";
-import type { Plan, Service } from "@/lib/api/types";
+import type { Service } from "@/lib/api/types";
 import { ServicePicker, useService } from "./service-picker";
 
 type Form = { memory: string; min: number; max: number; concurrency: number; grace: number; timeout: number; visibility: string };
 
-const limits: Record<Plan, { memory: number; max: number; minAllowed: boolean; timeout: number }> = {
-  free: { memory: 128, max: 2, minAllowed: false, timeout: 30 },
-  pro: { memory: 1024, max: 10, minAllowed: true, timeout: 300 },
-  team: { memory: 2048, max: 50, minAllowed: true, timeout: 300 },
-  unlimited: { memory: 2048, max: 50, minAllowed: true, timeout: 300 },
-};
+// Sensible ceilings for the form; what a user may really run is limited by the instance admin (memory, CPU).
+const limit = { memory: 2048, max: 50, timeout: 300 };
 
 const labels: Record<keyof Form, string> = {
   memory: "Memory per instance",
@@ -42,13 +38,13 @@ const labels: Record<keyof Form, string> = {
   visibility: "Visibility",
 };
 
-export function SettingsView({ team, project, services, plan }: { team: string; project: string; services: Service[]; plan: Plan }) {
+export function SettingsView({ team, project, services }: { team: string; project: string; services: Service[] }) {
   const name = useService(services.map((s) => s.name));
   const service = services.find((s) => s.name === name)!;
-  return <ServiceSettings key={name} team={team} project={project} service={service} services={services.map((s) => s.name)} plan={plan} />;
+  return <ServiceSettings key={name} team={team} project={project} service={service} services={services.map((s) => s.name)} />;
 }
 
-function ServiceSettings({ team, project, service, services, plan }: { team: string; project: string; service: Service; services: string[]; plan: Plan }) {
+function ServiceSettings({ team, project, service, services }: { team: string; project: string; service: Service; services: string[] }) {
   const router = useRouter();
   const initial: Form = {
     memory: `${service.memoryMb}`,
@@ -63,14 +59,12 @@ function ServiceSettings({ team, project, service, services, plan }: { team: str
   const [saved, setSaved] = useState(initial);
   const [review, setReview] = useState(false);
   const [confirmName, setConfirmName] = useState("");
-  const limit = limits[plan];
 
   const errors: Partial<Record<keyof Form, string>> = {};
-  if (Number(form.memory) > limit.memory) errors.memory = `${plan === "free" ? "Free" : "Your"} plan max is ${limit.memory} MB`;
-  if (form.min > 0 && !limit.minAllowed) errors.min = "Keeping instances warm needs a paid plan";
-  if (form.max > limit.max) errors.max = `Plan max is ${limit.max}`;
+  if (Number(form.memory) > limit.memory) errors.memory = `Up to ${limit.memory} MB`;
+  if (form.max > limit.max) errors.max = `Up to ${limit.max}`;
   if (form.min > form.max) errors.min = "Can't be more than max instances";
-  if (form.timeout > limit.timeout) errors.timeout = `Up to ${limit.timeout}s on this plan`;
+  if (form.timeout > limit.timeout) errors.timeout = `Up to ${limit.timeout}s`;
 
   const changes = (Object.keys(form) as (keyof Form)[]).filter((k) => form[k] !== saved[k]);
   const valid = Object.keys(errors).length === 0;
@@ -97,7 +91,7 @@ function ServiceSettings({ team, project, service, services, plan }: { team: str
           <p className="text-13 text-muted">How {service.name} wakes, sleeps and grows with traffic.</p>
         </div>
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label={labels.memory} hint={`Up to ${limit.memory} MB on this plan`} error={errors.memory}>
+          <Field label={labels.memory} hint={`Up to ${limit.memory} MB`} error={errors.memory}>
             <Select value={form.memory} onValueChange={(v) => set("memory", v)}>
               <SelectTrigger className="h-10 w-full font-mono text-13">
                 <SelectValue />
@@ -114,7 +108,7 @@ function ServiceSettings({ team, project, service, services, plan }: { team: str
           <Field label={labels.min} hint="0 = scale to zero" error={errors.min}>
             <Input type="number" min={0} mono value={form.min} onChange={num("min")} aria-invalid={Boolean(errors.min)} />
           </Field>
-          <Field label={labels.max} hint={`Plan max ${limit.max}`} error={errors.max}>
+          <Field label={labels.max} hint={`Up to ${limit.max}`} error={errors.max}>
             <Input type="number" min={1} mono value={form.max} onChange={num("max")} aria-invalid={Boolean(errors.max)} />
           </Field>
           <Field label={labels.concurrency} hint="Requests before adding an instance">
@@ -123,7 +117,7 @@ function ServiceSettings({ team, project, service, services, plan }: { team: str
           <Field label={`${labels.grace} (s)`} hint="Stay awake after the last request so goroutines finish">
             <Input type="number" min={0} mono value={form.grace} onChange={num("grace")} />
           </Field>
-          <Field label={`${labels.timeout} (s)`} hint="Up to 300s on paid plans" error={errors.timeout}>
+          <Field label={`${labels.timeout} (s)`} hint="Up to 300s" error={errors.timeout}>
             <Input type="number" min={1} mono value={form.timeout} onChange={num("timeout")} aria-invalid={Boolean(errors.timeout)} />
           </Field>
         </div>

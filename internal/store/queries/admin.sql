@@ -42,7 +42,7 @@ ORDER BY d.created_at DESC
 LIMIT sqlc.arg(lim);
 
 -- name: AdminDeployment :one
-SELECT d.*, p.slug AS project_slug, p.name AS project_name, t.id AS team_id, t.slug AS team_slug, t.plan AS team_plan,
+SELECT d.*, p.slug AS project_slug, p.name AS project_name, t.id AS team_id, t.slug AS team_slug,
        coalesce(u.email::text, '')::text AS created_by_email,
        coalesce((SELECT r.full_name FROM project_repos r WHERE r.project_id = p.id LIMIT 1), '')::text AS repo
 FROM deployments d
@@ -78,12 +78,19 @@ SELECT * FROM (
 ) x ORDER BY id;
 
 -- name: AdminUsers :many
-SELECT u.id, u.email::text AS email, u.name, u.is_owner, (u.password_hash <> '')::bool AS has_password, u.beta_tester, u.created_at,
+SELECT u.id, u.email::text AS email, u.name, u.is_owner, (u.password_hash <> '')::bool AS has_password, u.created_at,
        coalesce(string_agg(DISTINCT t.slug, ', '), '')::text AS teams,
        (SELECT count(*) FROM projects p JOIN memberships m2 ON m2.team_id = p.team_id WHERE m2.user_id = u.id)::bigint AS projects,
-       ld.last_deploy
+       ld.last_deploy,
+       ot.max_memory_mb, ot.max_cpu_millis, ot.max_concurrent_builds,
+       coalesce((SELECT sum(i.memory_mb) FROM instances i JOIN services s ON s.id = i.service_id JOIN projects p ON p.id = s.project_id
+                 WHERE p.team_id = ot.id AND i.state IN ('starting', 'running', 'paused')), 0)::bigint AS memory_used_mb,
+       coalesce((SELECT sum(s.cpu_millis) FROM instances i JOIN services s ON s.id = i.service_id JOIN projects p ON p.id = s.project_id
+                 WHERE p.team_id = ot.id AND i.state IN ('starting', 'running', 'paused')), 0)::bigint AS cpu_used_millis
 FROM users u
+LEFT JOIN LATERAL (SELECT t2.id, t2.max_memory_mb, t2.max_cpu_millis, t2.max_concurrent_builds FROM teams t2 JOIN memberships m3 ON m3.team_id = t2.id
+                   WHERE m3.user_id = u.id AND m3.role = 'owner' ORDER BY t2.created_at LIMIT 1) ot ON true
 LEFT JOIN memberships m ON m.user_id = u.id
 LEFT JOIN teams t ON t.id = m.team_id
 LEFT JOIN (SELECT created_by, max(created_at) AS last_deploy FROM deployments GROUP BY created_by) ld ON ld.created_by = u.id
-GROUP BY u.id, ld.last_deploy ORDER BY u.created_at DESC LIMIT $1;
+GROUP BY u.id, ld.last_deploy, ot.id, ot.max_memory_mb, ot.max_cpu_millis, ot.max_concurrent_builds ORDER BY u.created_at DESC LIMIT $1;

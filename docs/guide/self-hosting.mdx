@@ -16,13 +16,7 @@ Keep backups of anything that matters.
 
 - A fresh **Ubuntu 22.04 / 24.04** or **Debian 12** server, **x86_64 or arm64**, with root access.
 - **4 GB of RAM or more** (2 GB runs it, but builds on the server need room). The apps you deploy share what's left.
-- **Ports 80 and 443** free and reachable from the internet.
-- **Two domains** (or subdomains of two domains) you can add DNS records to:
-  - one for the **dashboard**, like `greyship.example.com`;
-  - one for **your apps**, like `example.net`, where each web service gets `<service>-<project>.example.net`.
-
-  Use a different registrable domain for apps than for the dashboard if you can. Browsers then treat them as separate
-  sites, so an app can't act as the dashboard.
+- **Ports 80, 443 and 8000** free. That is all you need to start: **no domain is required**.
 
 ## Install
 
@@ -32,19 +26,56 @@ On the server, as root:
 curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh
 ```
 
-It asks for the two domains and your email, then:
+It installs Docker, [gVisor](https://gvisor.dev), Postgres, an S3-compatible store
+([Garage](https://garagehq.deuxfleurs.fr)) and Node.js, downloads the release and checks its checksums, generates every
+secret into `/etc/greyship` (readable by root only), sets Greyship up as systemd services, and turns on a firewall for
+SSH and the ports above.
 
-1. installs Docker, [gVisor](https://gvisor.dev), Postgres, an S3-compatible store ([Garage](https://garagehq.deuxfleurs.fr)) and Node.js;
-2. downloads the release and checks its checksums;
-3. generates every secret into `/etc/greyship` (readable by root only);
-4. sets Greyship up as systemd services and turns on a firewall that allows only SSH, HTTP and HTTPS;
-5. prints the DNS records to add.
+When it finishes, the dashboard is at `http://<your server's IP>:8000`. Apps you deploy get free addresses like
+`http://<name>.apps-<ip>.sslip.io`. This is plain HTTP, so passwords and tokens are **not encrypted yet**: fine to try
+it out, not for real use. To make it real, add a domain (below).
 
-To skip the questions: `... | sudo sh -s -- --domain greyship.example.com --apps-domain example.net --email you@example.com`.
+To say who the owner is up front, add `--email you@example.com`: then only that email can create the first account.
 
-## DNS
+## First visit
 
-Point these records at the server's public IP:
+Open the dashboard. A new Greyship has no accounts, so you see **Create the owner account**. Pick an email and a
+password. **That account is the owner** and an admin. It works once: after that nobody can sign themselves up.
+
+## Adding people
+
+Open **Admin → Users → Add user**. Give an email, a name and a password (or press Generate), and tick **Admin** if they
+should manage the instance too. Send them the address and their password yourself; they can change it in **Settings**.
+
+Per user you can also:
+
+- **Limits**: how much memory, how many CPU cores and how many builds at once their apps may use together. Leave a
+  field empty for no limit. A deploy that would pass a limit fails with a message saying which, and the version that is
+  live keeps running. A deploy briefly runs the old and the new version side by side, so leave some room.
+- **Reset password** and **Make admin / Remove admin**. There is always at least one admin.
+
+### Forgot a password?
+
+Nobody gets an email. On the server, as root:
+
+```sh
+greyship-admin reset-password someone@example.com
+```
+
+It prints a new random password once and signs that account out everywhere.
+
+## Add a domain (HTTPS)
+
+You need two domains (or subdomains of two domains) you can add DNS records to: one for the **dashboard**, like
+`greyship.example.com`, and one for **your apps**, like `example.net`, where each web service gets
+`<service>-<project>.example.net`. Use a different registrable domain for apps than for the dashboard if you can:
+browsers then treat them as separate sites, so an app can't act as the dashboard.
+
+```sh
+sudo greyship-admin domain greyship.example.com example.net you@example.com
+```
+
+It switches the dashboard, the API, uploads and your apps to those domains with HTTPS and prints the DNS records to add:
 
 | Record | Name | For |
 | --- | --- | --- |
@@ -52,33 +83,9 @@ Point these records at the server's public IP:
 | A | `*.greyship.example.com` | `s3.…` (uploads) and `api.…` |
 | A | `*.example.net` | your apps |
 
-Certificates come from Let's Encrypt, automatically, the first time each name is visited.
-
-### Trying it without a domain
-
-`--sslip` uses free [sslip.io](https://sslip.io) names built from the server's IP (like
-`greyship-203-0-113-7.sslip.io`), so nothing needs configuring:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh -s -- --sslip --email you@example.com
-```
-
-Use it to try Greyship out, not to run anything real. All of sslip.io counts as one site to browsers, and Let's
-Encrypt's certificate limits are shared by every sslip.io user, so HTTPS can fail to issue.
-
-## First login
-
-Open `https://greyship.example.com` and sign up with the email you gave the installer. **That account is the owner:**
-it can open the admin view, and for now it's the only account that can sign up.
-
-No email provider is configured, so the login code is saved on the server instead. Read it with:
-
-```sh
-greyship-admin codes
-```
-
-To get real emails, add `GREYSHIP_RESEND_API_KEY=` and `GREYSHIP_MAIL_FROM=` to `/etc/greyship/greyship.env` (a
-[Resend](https://resend.com) key and a sender address on a verified domain) and restart the API.
+Certificates come from Let's Encrypt, automatically, the first time each name is visited, once DNS answers. Sign in
+again afterwards (sessions don't carry over). You can also give the installer the domains from the start:
+`... | sudo sh -s -- --domain greyship.example.com --apps-domain example.net --email you@example.com`.
 
 ## Use it
 
@@ -94,33 +101,18 @@ grey deploy
 `grey` remembers the server, so every later command talks to it. `grey whoami` shows which one. To use another Greyship
 again, run `grey login <its address>`.
 
-## Letting other people in
-
-Signup is closed after the owner's account. In `/etc/greyship/greyship.env`:
-
-```sh
-# let specific emails or whole domains sign up
-GREYSHIP_SIGNUP_ALLOWLIST=teammate@example.com,@example.com
-# or let anyone sign up (only on a private network or behind your own access control)
-GREYSHIP_SIGNUP_OPEN=true
-```
-
-then `systemctl restart greyship-api`. Everyone gets their own team and their own projects.
-
-### Adding people yourself
-
-Open **Admin → Users → Add user** in the dashboard. Give an email, a name and a password (or press Generate), and tick **Admin** if they should manage the instance too. They sign in with that password and can change it in **Settings**. Leave the password empty and they sign in with an emailed code instead. Use **Reset password** if someone forgets theirs. There is always at least one admin.
-
 ## Turning on email
 
-Email is optional. It sends sign-in codes and deploy notifications. You turn it on in the dashboard, no config file needed:
+Email is optional and only sends **deploy notifications** (a deploy succeeded or failed, a project was created).
+Signing in never needs it. You turn it on in the dashboard, no config file needed:
 
 1. Create a [Resend](https://resend.com) account, add your domain there and verify it.
 2. Create an API key in Resend.
 3. In Greyship open **Admin → Email**, paste the key, enter the domain (for example `mail.example.com`), tick **Send email**, and press **Save**.
 4. Press **Send test email**. It goes to your own address and shows Resend's error if something is wrong (usually an unverified domain).
 
-The key is stored encrypted and is never shown again. Mail comes from `login@` and `notifications@` your domain. Without email you can still sign in with Google, GitHub or a password you set for people (see above); deploy notifications still appear in the bell and as browser notifications.
+The key is stored encrypted and is never shown again. Mail comes from `notifications@` your domain. Without email,
+deploy notifications still appear in the bell and as browser notifications.
 
 ## Keeping it running
 
@@ -128,6 +120,7 @@ The key is stored encrypted and is never shown again. Mail comes from `login@` a
 greyship-admin status          # is every service up
 greyship-admin logs api        # follow a service's log (api, builder, scheduler, agent, router, dashboard)
 greyship-admin upgrade         # install the latest release (keeps your settings and data)
+greyship-admin reset-password <email>   # a forgotten password
 ```
 
 Settings live in `/etc/greyship/greyship.env`; restart with
@@ -149,9 +142,9 @@ Back up these two things:
 Built binaries and uploaded sources live in the `greyship-garage` Docker volume. They're needed for rollbacks, not for
 redeploying: any project can be deployed again from its source.
 
-## What's different from the hosted beta
+## Good to know
 
-- **No plans or limits.** Every team is on an unlimited plan: no build-minute caps, no project limits.
+- **No plans, no billing.** Everyone on the instance can build and run as much as the server allows, unless you limit them.
 - **Builds run on your server** inside gVisor. (Greyship can also build on [Fly.io](https://fly.io) machines; that is an
   advanced setting.)
 - **GitHub push-to-deploy** needs a GitHub App of your own. Importing a *public* repository by link works out of the box;

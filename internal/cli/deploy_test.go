@@ -114,7 +114,7 @@ func (f *deployAPI) server(t *testing.T) *httptest.Server {
 		if log == "" {
 			log = `{"line":{"seq":1,"stream":"build","line":"go: downloading chi"}}` + "\n" +
 				`{"line":{"seq":2,"stream":"build","line":"building api"}}` + "\n" +
-				`{"end":{"status":"ready","artifacts":[{"service":"api","type":"web","size_bytes":3355443},{"service":"worker","type":"worker","size_bytes":1048576}],"urls":[{"service":"api","url":"https://api-shop.greyship.tech"}],"build":{"seconds":42,"used_minutes":3,"included_minutes":100}}}` + "\n"
+				`{"end":{"status":"ready","artifacts":[{"service":"api","type":"web","size_bytes":3355443},{"service":"worker","type":"worker","size_bytes":1048576}],"urls":[{"service":"api","url":"https://api-shop.greyship.tech"}],"build":{"seconds":42}}}` + "\n"
 		}
 		_, _ = io.WriteString(w, log)
 	})
@@ -203,7 +203,7 @@ func TestDeploy(t *testing.T) {
 	if set, _ := f.patched["set"].(map[string]any); set["STRIPE_KEY"] != "sk_live_secret" || f.patched["restart"] != false {
 		t.Fatalf("env sent = %v, want the new value and no separate restart (the deploy rolls everything)", f.patched)
 	}
-	for _, want := range []string{"Deploying to haki/shop", "api", "web", "worker", "Packed", "Deployment d1 queued", "│ building api", "build: 42s · 3/100 min this month", "✓ Live", "api     https://api-shop.greyship.tech", "worker  (worker, no URL)"} {
+	for _, want := range []string{"Deploying to haki/shop", "api", "web", "worker", "Packed", "Deployment d1 queued", "│ building api", "build: 42s", "✓ Live", "api     https://api-shop.greyship.tech", "worker  (worker, no URL)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}

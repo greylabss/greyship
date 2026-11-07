@@ -42,7 +42,7 @@ func (f *fakeAPI) server(t *testing.T) *httptest.Server {
 			_, _ = w.Write([]byte(`{"error":{"code":"invalid_token","message":"bad"}}`))
 			return
 		}
-		_, _ = w.Write([]byte(`{"user":{"email":"a@b.co","teams":[{"slug":"haki","plan":"free","role":"owner"}]}}`))
+		_, _ = w.Write([]byte(`{"user":{"email":"a@b.co","teams":[{"slug":"haki","role":"owner"}]}}`))
 	})
 	mux.HandleFunc("DELETE /v1/tokens/current", func(w http.ResponseWriter, _ *http.Request) {
 		f.revoked = true
@@ -135,7 +135,7 @@ func TestWhoamiAndLogout(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, err = run(t, f, nil, path, "whoami")
-	if err != nil || !strings.Contains(out, "haki (owner, free)") {
+	if err != nil || !strings.Contains(out, "haki (owner)") {
 		t.Fatalf("whoami: %v %s", err, out)
 	}
 	out, err = run(t, f, nil, path, "logout")

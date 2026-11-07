@@ -39,7 +39,6 @@ export type AdminDetail = {
     FilesSize: number | null;
     ProjectName: string;
     TeamID: string;
-    TeamPlan: string;
     Repo: string;
   };
   Artifacts: { ServiceName: string; ServicePath: string; ServiceType: string; ObjectKey: string; Sha256: string; SizeBytes: number; GoVersion: string; Goarch: string }[] | null;
@@ -50,6 +49,6 @@ export type AdminDetail = {
   AppLogs: { ID: number; Ts: string; Stream: string; Line: string; InstanceID: string; ServiceName: string }[] | null;
 };
 
-export type AdminUser = { ID: string; Email: string; Name: string; IsOwner: boolean; HasPassword: boolean; BetaTester: boolean; CreatedAt: string; Teams: string; Projects: number; LastDeploy: string | null };
+export type AdminUser = { ID: string; Email: string; Name: string; IsOwner: boolean; MaxMemoryMb: number | null; MaxCpuMillis: number | null; MaxConcurrentBuilds: number | null; MemoryUsedMb: number; CpuUsedMillis: number; CreatedAt: string; Teams: string; Projects: number; LastDeploy: string | null };
 
 export type AdminMail = { enabled: boolean; active: boolean; source: "dashboard" | "environment" | "none"; sending_domain: string; from_name: string; key_set: boolean };

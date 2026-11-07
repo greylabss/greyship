@@ -186,7 +186,6 @@ function newProject(slug: string) {
     serviceCount: 1,
     requests24h: 0,
     requestsSeries: Array(24).fill(0),
-    spendCents: 0,
   };
 }
 

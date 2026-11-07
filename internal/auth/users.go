@@ -4,90 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/jackc/pgx/v5"
-
-	"greyship.tech/internal/plan"
 	"greyship.tech/internal/slug"
 	"greyship.tech/internal/store"
 )
 
-// findOrCreateUser returns the user for an email, creating them with a personal team on first login if signup
-// lets them in. Beta testers get their badge at signup, or at a later login if they joined the list afterwards.
-func findOrCreateUser(ctx context.Context, q *store.Queries, signup Signup, email, name, avatarURL string) (store.User, error) {
-	user, err := q.GetUserByEmail(ctx, email)
-	if err == nil {
-		if name != "" || avatarURL != "" {
-			if err := q.FillUserProfile(ctx, store.FillUserProfileParams{ID: user.ID, Name: name, AvatarUrl: avatarURL}); err != nil {
-				return store.User{}, fmt.Errorf("update profile: %w", err)
-			}
-		}
-		if !user.BetaTester && signup.Testers != nil {
-			// Best effort: the badge can wait for the next login, signing in can't.
-			if tester, err := signup.Testers.IsTester(ctx, email); err == nil && tester {
-				if err := q.MarkBetaTester(ctx, user.ID); err != nil {
-					return store.User{}, fmt.Errorf("mark beta tester: %w", err)
-				}
-				user.BetaTester = true
-			}
-		}
-		return user, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return store.User{}, fmt.Errorf("load user: %w", err)
-	}
-	// With no owner email configured, the first account on an instance may always sign up and owns it. With one,
-	// only that email may (it passes the check below), so nobody can claim an instance before its owner does.
-	n, err := q.UserCount(ctx)
-	if err != nil {
-		return store.User{}, fmt.Errorf("count users: %w", err)
-	}
-	first := n == 0 && signup.OwnerEmail == ""
-	tester := false
-	if first {
-		tester = signup.isTester(ctx, email) // only for the badge; the first account is let in either way
-	} else {
-		allowed, t, err := signup.check(ctx, email)
-		if err != nil {
-			return store.User{}, err
-		}
-		if !allowed {
-			return store.User{}, ErrNotInvited
-		}
-		tester = t
-	}
-
-	user, err = createAccount(ctx, q, signup.PlansOn, email, name, avatarURL)
-	if err != nil {
-		return store.User{}, err
-	}
-	if tester {
-		if err := q.MarkBetaTester(ctx, user.ID); err != nil {
-			return store.User{}, fmt.Errorf("mark beta tester: %w", err)
-		}
-		user.BetaTester = true
-	}
-	if signup.OwnerEmail != "" && email == signup.OwnerEmail {
-		if err := q.MakeOwnerByEmail(ctx, email); err != nil {
-			return store.User{}, fmt.Errorf("make owner: %w", err)
-		}
-		user.IsOwner = true
-	} else if first {
-		made, err := q.MakeOwnerIfFirst(ctx, user.ID)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return store.User{}, fmt.Errorf("make owner: %w", err)
-		}
-		user.IsOwner = made
-	}
-	return user, nil
-}
-
 // createAccount makes a user with a personal team they own.
-func createAccount(ctx context.Context, q *store.Queries, plansOn bool, email, name, avatarURL string) (store.User, error) {
-	user, err := q.CreateUser(ctx, store.CreateUserParams{Email: email, Name: name, AvatarUrl: avatarURL})
+func createAccount(ctx context.Context, q *store.Queries, email, name string) (store.User, error) {
+	user, err := q.CreateUser(ctx, store.CreateUserParams{Email: email, Name: name})
 	if err != nil {
 		return store.User{}, fmt.Errorf("create user: %w", err)
 	}
@@ -95,7 +21,7 @@ func createAccount(ctx context.Context, q *store.Queries, plansOn bool, email, n
 	if err != nil {
 		return store.User{}, err
 	}
-	team, err := q.CreateTeam(ctx, store.CreateTeamParams{Slug: slug, Name: slug, Plan: plan.Default(plansOn)})
+	team, err := q.CreateTeam(ctx, store.CreateTeamParams{Slug: slug, Name: slug})
 	if err != nil {
 		return store.User{}, fmt.Errorf("create personal team: %w", err)
 	}

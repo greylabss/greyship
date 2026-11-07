@@ -6,8 +6,6 @@ export const scenarios = [
   { id: "sleeping", label: "All sleeping" },
   { id: "crashing", label: "Service crashing" },
   { id: "dns", label: "Waiting for DNS" },
-  { id: "over-cap", label: "Over spend cap" },
-  { id: "pro", label: "Pro plan" },
   { id: "error", label: "API error" },
   { id: "slow", label: "Slow API (loading)" },
 ] as const;

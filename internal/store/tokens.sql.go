@@ -172,7 +172,7 @@ func (q *Queries) GetDeviceByUserCode(ctx context.Context, arg GetDeviceByUserCo
 }
 
 const getMembership = `-- name: GetMembership :one
-SELECT t.id, t.slug, t.name, t.plan, t.spend_cap_cents, t.created_at, m.role FROM teams t JOIN memberships m ON m.team_id = t.id
+SELECT t.id, t.slug, t.name, t.spend_cap_cents, t.created_at, t.max_memory_mb, t.max_cpu_millis, t.max_concurrent_builds, m.role FROM teams t JOIN memberships m ON m.team_id = t.id
 WHERE m.user_id = $1 AND t.slug = $2
 `
 
@@ -182,13 +182,15 @@ type GetMembershipParams struct {
 }
 
 type GetMembershipRow struct {
-	ID            string
-	Slug          string
-	Name          string
-	Plan          string
-	SpendCapCents int32
-	CreatedAt     time.Time
-	Role          string
+	ID                  string
+	Slug                string
+	Name                string
+	SpendCapCents       int32
+	CreatedAt           time.Time
+	MaxMemoryMb         *int32
+	MaxCpuMillis        *int32
+	MaxConcurrentBuilds *int32
+	Role                string
 }
 
 func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (GetMembershipRow, error) {
@@ -198,16 +200,18 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (G
 		&i.ID,
 		&i.Slug,
 		&i.Name,
-		&i.Plan,
 		&i.SpendCapCents,
 		&i.CreatedAt,
+		&i.MaxMemoryMb,
+		&i.MaxCpuMillis,
+		&i.MaxConcurrentBuilds,
 		&i.Role,
 	)
 	return i, err
 }
 
 const getTeamByID = `-- name: GetTeamByID :one
-SELECT id, slug, name, plan, spend_cap_cents, created_at FROM teams WHERE id = $1
+SELECT id, slug, name, spend_cap_cents, created_at, max_memory_mb, max_cpu_millis, max_concurrent_builds FROM teams WHERE id = $1
 `
 
 func (q *Queries) GetTeamByID(ctx context.Context, id string) (Team, error) {
@@ -217,9 +221,11 @@ func (q *Queries) GetTeamByID(ctx context.Context, id string) (Team, error) {
 		&i.ID,
 		&i.Slug,
 		&i.Name,
-		&i.Plan,
 		&i.SpendCapCents,
 		&i.CreatedAt,
+		&i.MaxMemoryMb,
+		&i.MaxCpuMillis,
+		&i.MaxConcurrentBuilds,
 	)
 	return i, err
 }

@@ -65,10 +65,10 @@ Uploaded 3 binaries (7.8 MB)
   your binary with `files = [...]` in `greyship.toml`.
 - **Manage config and secrets.** Env vars encrypted at rest, a release command for migrations, and a `.env.prod` diff
   before every deploy.
-- **See what's happening.** Live build and runtime logs, a bell and email and browser push for deploys, and an admin view
+- **See what's happening.** Live build and runtime logs, a bell, browser push and optional email for deploys, and an admin view
   to debug any deployment by its id.
 - **Run it safely.** Every app lives in a gVisor sandbox with its own network, so tenants can't reach each other, the
-  host, or Greyship's internals. Strangers can't sign up: the first account is the owner, and everyone else is invited.
+  host, or Greyship's internals. Nobody can sign themselves up: the first visitor creates the owner, and the owner adds everyone else with an email and password, and can limit how much each user may use.
 - **Use it your way.** One API under both the dashboard and the `grey` CLI; every action is available in both.
 
 <div align="center">
@@ -114,13 +114,10 @@ Five small Go services (API, builder, scheduler, node agent, router) and a dashb
 S3-compatible storage. The long version is in [`docs/how-it-works.md`](docs/how-it-works.md) and
 [`docs/architecture.md`](docs/architecture.md).
 
-## Self-hosted or our hosted beta
+## Self-hosted, and our beta
 
-| Self-hosted | Hosted beta (greyship.tech) |
-| --- | --- |
-| Install Greyship on your own server. | A Greyship instance we run for early testers. |
-| You control and maintain everything. | Invite-only while we learn from it: [apply here](https://forms.greyship.tech). |
-| Free and open source, no limits. | Free during the beta. |
+Greyship is software you run on your own server: free, open source, no plans, no billing. Our private beta is just
+another instance we run; we add each tester as a user ([apply here](https://forms.greyship.tech)).
 
 ## What works today, and what's next
 

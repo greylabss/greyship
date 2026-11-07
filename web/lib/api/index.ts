@@ -32,10 +32,9 @@ async function respond<T>(build: (s: Scenario) => T): Promise<T> {
 const fixtureTeam = "haki";
 const fixtures = {
   me: () => respond(() => teamFixtures.me),
-  getTeam: (slug: string) => respond((s) => ({ ...teamFixtures.team(s), slug })),
+  getTeam: (slug: string) => respond(() => ({ ...teamFixtures.team(), slug })),
   listProjects: (_team: string) => respond(teamFixtures.projects),
-  getUsage: (_team: string) => respond(teamFixtures.usage),
-  listInvoices: (_team: string) => respond(teamFixtures.invoices),
+  myUsage: () => respond(teamFixtures.resourceUsage),
   listActivity: (_team: string) => respond(teamFixtures.activity),
   getProject: (_team: string, project: string) => respond((s) => projectFixtures.projectDetail(project, s)),
   getDeployment: (_team: string, project: string, id: string) =>
@@ -54,7 +53,6 @@ export const liveMode = (process.env.GREYSHIP_API_URL ?? "") !== "";
 
 // What the real API can answer yet; screens show "arrives with …" for the rest instead of invented numbers.
 export const available = {
-  usage: !liveMode,
   metrics: !liveMode,
   runtime: !liveMode,
   repos: !liveMode,
@@ -65,11 +63,11 @@ const fixtureTokens = [
   { name: "laptop · grey login", created: "Oct 3", lastUsed: "now" },
 ];
 
-export const api: typeof fixtures & { teams: () => Promise<string[]>; listTokens: typeof live.listTokens; buildUsage: typeof live.buildUsage } = liveMode
+export const api: typeof fixtures & { teams: () => Promise<string[]>; listTokens: typeof live.listTokens; setupNeeded: typeof live.setupNeeded } = liveMode
   ? { ...fixtures, ...live }
   : {
       ...fixtures,
       teams: async () => [fixtureTeam],
       listTokens: () => respond(() => fixtureTokens),
-      buildUsage: () => respond(() => ({ usedMinutes: 12, includedMinutes: 100, resetsOn: "1 December" })),
+      setupNeeded: async () => false,
     };

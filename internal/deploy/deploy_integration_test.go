@@ -142,6 +142,27 @@ func TestDeployFlow(t *testing.T) {
 		t.Fatalf("jobs = %d %s %s, want one build.requested for %s", jobs, kind, payload, d.ID)
 	}
 
+	// No limit set: builds aren't grouped. With one, a user's builds wait behind their own.
+	var group *string
+	if err := pool.QueryRow(ctx, "SELECT group_key FROM jobs WHERE kind = 'build.requested'").Scan(&group); err != nil || group != nil {
+		t.Fatalf("an unlimited team's build is in group %v (%v)", group, err)
+	}
+	if _, err := pool.Exec(ctx, "UPDATE teams SET max_concurrent_builds = 2 WHERE id = $1", acme.ID); err != nil {
+		t.Fatal(err)
+	}
+	up2, err := svc.Create(ctx, owner, p.ID, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upload(t, up2.URL, body)
+	if _, err := svc.Start(ctx, owner, up2.Deployment.ID); err != nil {
+		t.Fatal(err)
+	}
+	var limit int
+	if err := pool.QueryRow(ctx, "SELECT group_key, group_limit FROM jobs WHERE payload->>'deployment_id' = $1", up2.Deployment.ID).Scan(&group, &limit); err != nil || group == nil || *group != acme.ID || limit != 2 {
+		t.Fatalf("a limited team's build is in group %v limit %d (%v), want its team and 2", group, limit, err)
+	}
+
 	got, err := svc.Get(ctx, viewer, d.ID)
 	if err != nil || got.Status != "queued" {
 		t.Fatalf("viewer get = %+v, %v", got.Deployment, err)
@@ -153,7 +174,7 @@ func TestDeployFlow(t *testing.T) {
 		t.Fatalf("bad id get = %v, want ErrNotFound", err)
 	}
 	list, err := svc.List(ctx, owner, p.ID, 10)
-	if err != nil || len(list) != 1 || list[0].ID != d.ID {
+	if err != nil || len(list) != 2 || (list[0].ID != d.ID && list[1].ID != d.ID) {
 		t.Fatalf("list = %+v, %v", list, err)
 	}
 
@@ -179,13 +200,6 @@ func TestDeployFlow(t *testing.T) {
 	var skip bool
 	if err := pool.QueryRow(ctx, "SELECT (payload->>'skip_release_command')::bool FROM jobs WHERE kind = 'deployment.release' AND payload->>'deployment_id' = $1", back.ID).Scan(&skip); err != nil || !skip {
 		t.Fatalf("release job skip_release_command = %v, %v; want true", skip, err)
-	}
-
-	if _, included, err := svc.TeamBuildMinutes(ctx, viewer, "acme"); err != nil || included == 0 {
-		t.Fatalf("viewer build minutes = %d, %v", included, err)
-	}
-	if _, _, err := svc.TeamBuildMinutes(ctx, outsider, "acme"); !errors.Is(err, project.ErrNotFound) {
-		t.Fatalf("outsider build minutes = %v, want ErrNotFound", err)
 	}
 
 	tokenOtherTeam := project.Caller{UserID: owner.UserID, TokenTeamID: other.ID}

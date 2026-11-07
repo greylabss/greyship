@@ -8,7 +8,7 @@ You need Docker Desktop running and Lima installed (`brew install lima`). The fi
 
 ```sh
 make up        # Postgres, Garage, the sandbox VM, then the five Greyship services
-make login     # signs you in locally; the login code is read from tmp/outbox
+make login     # creates the local owner (you@example.com, password dev-password-123) and a CLI token
 make hello     # deploys examples/hello: an API, a worker and a migration
 ```
 

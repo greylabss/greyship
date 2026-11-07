@@ -85,6 +85,7 @@ func run(logger *slog.Logger) error {
 			Fly:  &fly.Client{Base: "https://api.machines.dev/v1", App: cfg.Fly.App, Token: cfg.Fly.Token, Region: cfg.Fly.Region, HTTP: &http.Client{Timeout: time.Minute}},
 			Pool: pool, Storage: storage, Signer: auth.Signer{Key: cfg.TokenSecret, Now: time.Now},
 			APIURL: cfg.Fly.APIURL, ImagePrefix: cfg.Fly.ImagePrefix, MaxMachines: cfg.Fly.MaxMachines, VolumeGB: cfg.Fly.VolumeGB,
+			CPUs: cfg.Fly.CPUs, MemoryMB: cfg.Fly.MemoryMB, Timeout: cfg.Timeout,
 			Poll: 500 * time.Millisecond, Logger: logger, Now: time.Now,
 		}
 		// Builds run on Fly, so this machine only waits for them: one worker per possible build machine.

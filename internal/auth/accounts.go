@@ -19,8 +19,8 @@ import (
 	"greyship.tech/internal/store"
 )
 
-// Accounts the instance's admin creates, with a password (decisions.md 051). Everyone else still signs in with an
-// emailed code, Google or GitHub.
+// Accounts have an email and a password. The first is made by whoever opens a new instance (Setup); the admin makes
+// the rest (decisions.md 051, 053).
 
 const (
 	pbkdf2Iterations = 600_000 // OWASP's figure for PBKDF2-HMAC-SHA256
@@ -39,6 +39,8 @@ var (
 	ErrLastAdmin     = errors.New("there must be at least one admin")
 	ErrWrongPassword = errors.New("the current password is wrong")
 	ErrNoUser        = errors.New("no such user")
+	ErrSetupDone     = errors.New("this instance already has an owner")
+	ErrNotOwnerEmail = errors.New("this instance only accepts its owner's email for the first account")
 )
 
 // hashPassword returns "pbkdf2-sha256$<iterations>$<salt>$<hash>", so the cost can change later without breaking old
@@ -140,7 +142,7 @@ func (s *Service) LoginPassword(ctx context.Context, rawEmail, password, ip, use
 type NewUser struct {
 	Email    string
 	Name     string
-	Password string // optional: without one the person signs in with an emailed code
+	Password string
 	Admin    bool
 }
 
@@ -150,48 +152,49 @@ func (s *Service) CreateUser(ctx context.Context, in NewUser) (store.User, error
 	if err != nil {
 		return store.User{}, err
 	}
-	name := strings.TrimSpace(in.Name)
-	if utf8.RuneCountInString(name) > 80 {
-		return store.User{}, errors.New("a name is at most 80 characters")
-	}
-	hash := ""
-	if in.Password != "" {
-		if err := checkPassword(in.Password); err != nil {
-			return store.User{}, err
-		}
-		if hash, err = hashPassword(in.Password); err != nil {
-			return store.User{}, err
-		}
-	}
 	var user store.User
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		q := store.New(tx)
-		if _, err := q.GetUserByEmail(ctx, email); err == nil {
-			return ErrUserExists
-		} else if !errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("load user: %w", err)
-		}
-		if user, err = createAccount(ctx, q, s.signup.PlansOn, email, name, ""); err != nil {
-			return err
-		}
-		if hash != "" {
-			if err := q.SetPasswordHash(ctx, store.SetPasswordHashParams{ID: user.ID, PasswordHash: hash}); err != nil {
-				return fmt.Errorf("set password: %w", err)
-			}
-		}
-		if in.Admin {
-			if err := q.SetOwner(ctx, store.SetOwnerParams{ID: user.ID, IsOwner: true}); err != nil {
-				return fmt.Errorf("make admin: %w", err)
-			}
-			user.IsOwner = true
-		}
-		return nil
+		var err error
+		user, err = s.createUser(ctx, store.New(tx), email, in)
+		return err
 	})
 	return user, err
 }
 
-// SetPassword changes your own password. If you have one, the current one must match; an account without one (it
-// signs in with codes) can set its first while signed in.
+func (s *Service) createUser(ctx context.Context, q *store.Queries, email string, in NewUser) (store.User, error) {
+	name := strings.TrimSpace(in.Name)
+	if utf8.RuneCountInString(name) > 80 {
+		return store.User{}, errors.New("a name is at most 80 characters")
+	}
+	if err := checkPassword(in.Password); err != nil {
+		return store.User{}, err
+	}
+	hash, err := hashPassword(in.Password)
+	if err != nil {
+		return store.User{}, err
+	}
+	if _, err := q.GetUserByEmail(ctx, email); err == nil {
+		return store.User{}, ErrUserExists
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return store.User{}, fmt.Errorf("load user: %w", err)
+	}
+	user, err := createAccount(ctx, q, email, name)
+	if err != nil {
+		return store.User{}, err
+	}
+	if err := q.SetPasswordHash(ctx, store.SetPasswordHashParams{ID: user.ID, PasswordHash: hash}); err != nil {
+		return store.User{}, fmt.Errorf("set password: %w", err)
+	}
+	if in.Admin {
+		if err := q.SetOwner(ctx, store.SetOwnerParams{ID: user.ID, IsOwner: true}); err != nil {
+			return store.User{}, fmt.Errorf("make admin: %w", err)
+		}
+		user.IsOwner = true
+	}
+	return user, nil
+}
+
+// SetPassword changes your own password; the current one must match.
 func (s *Service) SetPassword(ctx context.Context, userID, current, next string) error {
 	if err := checkPassword(next); err != nil {
 		return err
@@ -204,7 +207,7 @@ func (s *Service) SetPassword(ctx context.Context, userID, current, next string)
 	if err != nil {
 		return fmt.Errorf("load user: %w", err)
 	}
-	if user.PasswordHash != "" && !passwordMatches(user.PasswordHash, current) {
+	if !passwordMatches(user.PasswordHash, current) {
 		return ErrWrongPassword
 	}
 	return s.storePassword(ctx, q, userID, next)
@@ -255,4 +258,95 @@ func (s *Service) SetAdmin(ctx context.Context, userID string, admin bool) error
 		}
 		return q.SetOwner(ctx, store.SetOwnerParams{ID: userID, IsOwner: admin})
 	})
+}
+
+// NeedsSetup reports whether the instance has no accounts yet, so its first visitor creates the owner.
+func (s *Service) NeedsSetup(ctx context.Context) (bool, error) {
+	n, err := store.New(s.pool).UserCount(ctx)
+	if err != nil {
+		return false, fmt.Errorf("count users: %w", err)
+	}
+	return n == 0, nil
+}
+
+// Setup creates the owner account of a new instance and signs it in. It works once: after the first account
+// exists, only an admin makes accounts.
+func (s *Service) Setup(ctx context.Context, in NewUser, userAgent string) (string, store.User, error) {
+	email, err := NormalizeEmail(in.Email)
+	if err != nil {
+		return "", store.User{}, err
+	}
+	if s.ownerEmail != "" && email != s.ownerEmail {
+		return "", store.User{}, ErrNotOwnerEmail
+	}
+	var token string
+	var user store.User
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		q := store.New(tx)
+		// Two people opening a new instance at once: the second waits here and then sees an owner.
+		if _, err := tx.Exec(ctx, "LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE"); err != nil {
+			return fmt.Errorf("lock users: %w", err)
+		}
+		n, err := q.UserCount(ctx)
+		if err != nil {
+			return fmt.Errorf("count users: %w", err)
+		}
+		if n > 0 {
+			return ErrSetupDone
+		}
+		in.Admin = true
+		if user, err = s.createUser(ctx, q, email, in); err != nil {
+			return err
+		}
+		token, err = s.createSession(ctx, q, user.ID, userAgent)
+		return err
+	})
+	if err != nil {
+		return "", store.User{}, err
+	}
+	return token, user, nil
+}
+
+// ResetPassword gives an account a new random password and signs it out everywhere. It is for the server's
+// operator (greyship-admin reset-password), who proves who they are by having shell access.
+func (s *Service) ResetPassword(ctx context.Context, rawEmail string) (string, error) {
+	email, err := NormalizeEmail(rawEmail)
+	if err != nil {
+		return "", err
+	}
+	q := store.New(s.pool)
+	user, err := q.GetUserByEmail(ctx, email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNoUser
+	}
+	if err != nil {
+		return "", fmt.Errorf("load user: %w", err)
+	}
+	password, err := RandomPassword()
+	if err != nil {
+		return "", err
+	}
+	if err := s.storePassword(ctx, q, user.ID, password); err != nil {
+		return "", err
+	}
+	if err := q.DeleteUserSessions(ctx, user.ID); err != nil {
+		return "", fmt.Errorf("end sessions: %w", err)
+	}
+	if err := q.ClearPasswordFailures(ctx, email); err != nil {
+		return "", fmt.Errorf("clear failures: %w", err)
+	}
+	return password, nil
+}
+
+// RandomPassword is 20 characters from an alphabet without look-alikes.
+func RandomPassword() (string, error) {
+	const alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	b := make([]byte, 20)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("random password: %w", err)
+	}
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b), nil
 }

@@ -22,6 +22,11 @@ type Message struct {
 	Text    string
 }
 
+// Sender sends one message.
+type Sender interface {
+	Send(ctx context.Context, m Message) error
+}
+
 // Resend sends through https://resend.com's HTTP API.
 type Resend struct {
 	APIKey string

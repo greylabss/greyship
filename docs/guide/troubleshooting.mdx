@@ -57,8 +57,8 @@ example), or it's not meant to serve. Add timeouts to startup calls, or make it 
 | Message | Fix |
 | --- | --- |
 | `you're not logged in (or the token was revoked). Run: grey login` | Log in again. Tokens revoked in **Settings > API tokens** stop working at once. |
-| `This email isn't invited to this Greyship yet.` | Ask the owner of the Greyship you're using to add you. On our hosted beta, sign in with the email you applied with, or apply at [forms.greyship.tech](https://forms.greyship.tech). |
-| `We couldn't check the invite list just now.` | Try again in a minute. |
+| `Wrong email or password.` | Check both. After 8 wrong tries for an email you wait 15 minutes. Forgot it? Ask your instance admin, or on the server run `greyship-admin reset-password <email>`. |
+| `memory limit reached…` or `CPU limit reached…` | Your instance admin limited what your apps may use. Stop something you don't need, or ask them to raise the limit. See [Limits](/limits). |
 | `grey: command not found` | The install folder isn't on your `PATH`; the installer printed the line to add. |
 
 ## Still stuck?

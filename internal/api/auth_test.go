@@ -6,37 +6,20 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"greyship.tech/internal/auth"
-	"greyship.tech/internal/mail"
 	"greyship.tech/internal/store"
 )
 
 type fakeAuth struct {
-	startErr  error
-	verifyErr error
 	pollErr   error
 	sessions  map[string]store.User
 	tokens    map[string]store.User
 	loggedOut []string
 	revoked   []string
-}
-
-func (f *fakeAuth) StartEmail(context.Context, string, string) error { return f.startErr }
-
-func (f *fakeAuth) VerifyEmail(_ context.Context, email, _, _ string) (string, store.User, error) {
-	if f.verifyErr != nil {
-		return "", store.User{}, f.verifyErr
-	}
-	return "tok-1", store.User{ID: "u1", Email: email}, nil
-}
-
-func (f *fakeAuth) CompleteOAuth(context.Context, auth.Identity, string) (string, store.User, error) {
-	return "tok-oauth", store.User{ID: "u1"}, nil
 }
 
 func (f *fakeAuth) SessionUser(_ context.Context, token string) (store.User, error) {
@@ -52,7 +35,7 @@ func (f *fakeAuth) Logout(_ context.Context, token string) error {
 }
 
 func (f *fakeAuth) Teams(context.Context, string) ([]store.ListUserTeamsRow, error) {
-	return []store.ListUserTeamsRow{{ID: "t1", Slug: "haki", Name: "haki", Plan: "free", Role: "owner"}}, nil
+	return []store.ListUserTeamsRow{{ID: "t1", Slug: "haki", Name: "haki", Role: "owner"}}, nil
 }
 
 func (f *fakeAuth) Authenticate(_ context.Context, token string) (store.User, store.Token, error) {
@@ -98,7 +81,6 @@ func (f *fakeAuth) PollDevice(context.Context, string) (string, store.User, erro
 func newTestServer(fa *fakeAuth) *Server {
 	return New(Options{
 		Auth:         fa,
-		Providers:    map[string]auth.Provider{"github": auth.GitHub("cid", "secret", "http://api.test/v1/auth/oauth/github/callback", auth.GitHubEndpoints)},
 		Signer:       auth.Signer{Key: []byte(strings.Repeat("k", 32)), Now: time.Now},
 		DashboardURL: "http://dash.test",
 		AppsDomain:   "greyship.tech",
@@ -167,51 +149,6 @@ func TestCrossSiteRequestsAreRefused(t *testing.T) {
 	}
 }
 
-func TestStartEmail(t *testing.T) {
-	tests := []struct {
-		name        string
-		contentType string
-		body        string
-		err         error
-		wantStatus  int
-		wantCode    string
-	}{
-		{"sent", "application/json", `{"email":"a@b.co"}`, nil, http.StatusAccepted, `"code_sent"`},
-		{"form post refused", "application/x-www-form-urlencoded", "email=a@b.co", nil, http.StatusUnsupportedMediaType, "unsupported_media_type"},
-		{"unknown field", "application/json", `{"email":"a@b.co","admin":true}`, nil, http.StatusBadRequest, "invalid_json"},
-		{"invalid email", "application/json", `{"email":"nope"}`, auth.ErrInvalidEmail, http.StatusBadRequest, "invalid_email"},
-		{"rate limited", "application/json", `{"email":"a@b.co"}`, &auth.RateLimitError{RetryAfter: time.Minute}, http.StatusTooManyRequests, "rate_limited"},
-		{"mail queue full", "application/json", `{"email":"a@b.co"}`, mail.ErrQueueFull, http.StatusServiceUnavailable, "busy"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rec := do(newTestServer(&fakeAuth{startErr: tt.err}), "POST", "/v1/auth/email/start", tt.contentType, tt.body)
-			if rec.Code != tt.wantStatus || !strings.Contains(rec.Body.String(), tt.wantCode) {
-				t.Fatalf("status %d body %s; want %d containing %s", rec.Code, rec.Body, tt.wantStatus, tt.wantCode)
-			}
-			if tt.wantStatus == http.StatusTooManyRequests && rec.Header().Get("Retry-After") != "60" {
-				t.Fatalf("Retry-After = %q", rec.Header().Get("Retry-After"))
-			}
-		})
-	}
-}
-
-func TestVerifyEmailSetsSecureSession(t *testing.T) {
-	rec := do(newTestServer(&fakeAuth{}), "POST", "/v1/auth/email/verify", "application/json", `{"email":"a@b.co","code":"123456"}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status %d: %s", rec.Code, rec.Body)
-	}
-	c := rec.Result().Cookies()
-	if len(c) != 1 || c[0].Name != sessionCookie || c[0].Value != "tok-1" || !c[0].HttpOnly || !c[0].Secure || c[0].SameSite != http.SameSiteLaxMode {
-		t.Fatalf("session cookie = %+v", c)
-	}
-
-	rec = do(newTestServer(&fakeAuth{verifyErr: auth.ErrInvalidCode}), "POST", "/v1/auth/email/verify", "application/json", `{"email":"a@b.co","code":"000000"}`)
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "invalid_code") || len(rec.Result().Cookies()) != 0 {
-		t.Fatalf("wrong code: status %d body %s cookies %v", rec.Code, rec.Body, rec.Result().Cookies())
-	}
-}
-
 func TestMeAndLogout(t *testing.T) {
 	fa := &fakeAuth{sessions: map[string]store.User{"good": {ID: "u1", Email: "a@b.co"}}}
 	s := newTestServer(fa)
@@ -230,54 +167,6 @@ func TestMeAndLogout(t *testing.T) {
 	rec = do(s, "POST", "/v1/auth/logout", "", "", &http.Cookie{Name: sessionCookie, Value: "good"})
 	if rec.Code != http.StatusNoContent || len(fa.loggedOut) != 1 || rec.Result().Cookies()[0].MaxAge != -1 {
 		t.Fatalf("logout: %d %v %+v", rec.Code, fa.loggedOut, rec.Result().Cookies())
-	}
-}
-
-func TestOAuthStart(t *testing.T) {
-	s := newTestServer(&fakeAuth{})
-	if rec := do(s, "GET", "/v1/auth/oauth/myspace/start", "", ""); rec.Code != http.StatusNotFound {
-		t.Fatalf("unknown provider: %d", rec.Code)
-	}
-	rec := do(s, "GET", "/v1/auth/oauth/github/start", "", "")
-	if rec.Code != http.StatusFound {
-		t.Fatalf("status %d", rec.Code)
-	}
-	loc, _ := url.Parse(rec.Header().Get("Location"))
-	q := loc.Query()
-	if loc.Host != "github.com" || q.Get("state") == "" || q.Get("code_challenge_method") != "S256" || q.Get("client_id") != "cid" {
-		t.Fatalf("redirect = %s", loc)
-	}
-	c := rec.Result().Cookies()
-	if len(c) != 1 || c[0].Name != stateCookie || !c[0].HttpOnly || c[0].Path != "/v1/auth/oauth" {
-		t.Fatalf("state cookie = %+v", c)
-	}
-}
-
-func TestOAuthCallbackRejectsBadState(t *testing.T) {
-	s := newTestServer(&fakeAuth{})
-	start := do(s, "GET", "/v1/auth/oauth/github/start", "", "")
-	stateCookieValue := start.Result().Cookies()[0]
-
-	tests := []struct {
-		name   string
-		query  string
-		cookie *http.Cookie
-	}{
-		{"no cookie", "?state=x&code=y", nil},
-		{"state mismatch", "?state=forged&code=y", stateCookieValue},
-		{"tampered cookie", "?state=x&code=y", &http.Cookie{Name: stateCookie, Value: stateCookieValue.Value + "x"}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var cookies []*http.Cookie
-			if tt.cookie != nil {
-				cookies = append(cookies, tt.cookie)
-			}
-			rec := do(s, "GET", "/v1/auth/oauth/github/callback"+tt.query, "", "", cookies...)
-			if rec.Code != http.StatusFound || rec.Header().Get("Location") != "http://dash.test/signin?error=state" {
-				t.Fatalf("status %d location %s", rec.Code, rec.Header().Get("Location"))
-			}
-		})
 	}
 }
 

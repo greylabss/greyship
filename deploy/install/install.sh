@@ -14,7 +14,7 @@
 #
 # Options (all optional):
 #   --email you@example.com         the owner account: only this email can create the first account (else the first
-#                                   person to open the dashboard becomes the owner)
+#                                   person to open the dashboard creates it and becomes the owner)
 #   --domain greyship.example.com   install with HTTPS on your own domains right away (needs DNS records, see the end)
 #   --apps-domain example.net       where apps live with --domain (wildcard record); a different domain than the
 #                                   dashboard's is better
@@ -316,13 +316,13 @@ GREYSHIP_COOKIE_SECRET=$(hex 32)
 GREYSHIP_MASTER_KEY=$(hex 32)
 GREYSHIP_PROXY_SECRET=$proxy
 GREYSHIP_VAPID_PRIVATE_KEY=$("$DL/server/greyship-api" vapid-key)
-# The owner is the first account (or GREYSHIP_OWNER_EMAIL, when set: then only that email can create the first
-# account). After that signup is closed. To let anyone sign up add GREYSHIP_SIGNUP_OPEN=true, or list emails in
-# GREYSHIP_SIGNUP_ALLOWLIST.
+# The owner is the first account, created by whoever opens the dashboard first (or only GREYSHIP_OWNER_EMAIL, when
+# set). Nobody can sign themselves up after that: the owner adds users in the dashboard (Admin > Users) with a
+# password. A forgotten password is reset on this server: greyship-admin reset-password <email>.
 $owner_line
 # No domain yet: plain HTTP. Run greyship-admin domain to switch to HTTPS (this line is removed then).
 $http_line
-# Email: optional. Without a provider, login codes are saved as files (run: greyship-admin codes).
+# Email: optional, only for deploy notifications.
 # Email is easier to set up in the dashboard (Admin > Email); these two apply only until you save settings there.
 # GREYSHIP_RESEND_API_KEY=
 # GREYSHIP_MAIL_FROM=Greyship <login@$PLATFORM_DOMAIN>
@@ -432,21 +432,21 @@ start_everything() {
 }
 
 finish() {
-	owner_hint="sign up: the first account is the owner"
-	[ -z "$OWNER_EMAIL" ] || owner_hint="sign up with $OWNER_EMAIL: that account is the owner"
+	owner_hint="create the owner account: the first account is the owner"
+	[ -z "$OWNER_EMAIL" ] || owner_hint="create the owner account with $OWNER_EMAIL"
 	if [ "$SCHEME" = http ]; then
 		cat <<MSG
 
 ✓ Greyship $VERSION is running.
 
 Open  $DASH_URL   and $owner_hint.
-No email provider is set, so the login code is saved on this server: run   greyship-admin codes
+Add everyone else under Admin > Users (email and password). Forgot a password? On this server: greyship-admin reset-password <email>
 From your computer (installs grey, already pointed at this server):
     curl -fsSL $DASH_URL/install | GREY_SERVER=$DASH_URL sh
 then   grey login
 Apps you deploy get free addresses like  http://<name>.$APPS_DOMAIN
 
-Nothing is encrypted yet: login codes and your CLI token cross the network in the clear. That's fine while you try
+Nothing is encrypted yet: passwords and your CLI token cross the network in the clear. That's fine while you try
 it out; before real use, point a domain at this server and run
     greyship-admin domain greyship.example.com example.net you@example.com
 which switches the dashboard and your apps to your domains with HTTPS and prints the DNS records to add.
@@ -471,7 +471,7 @@ MSG
 		cat <<MSG
 
 Then open https://$PLATFORM_DOMAIN and $owner_hint.
-No email provider is set, so the login code is saved on this server: run   greyship-admin codes
+Add everyone else under Admin > Users (email and password). Forgot a password? On this server: greyship-admin reset-password <email>
 From your computer (installs grey, already pointed at this server):
     curl -fsSL https://$PLATFORM_DOMAIN/install | GREY_SERVER=https://$PLATFORM_DOMAIN sh
 then   grey login
@@ -479,7 +479,7 @@ MSG
 	fi
 	cat <<MSG
 
-Looking after it: greyship-admin status | logs | codes | domain | upgrade     Settings: $ETC/greyship.env
+Looking after it: greyship-admin status | logs | reset-password | domain | upgrade     Settings: $ETC/greyship.env
 Docs: https://docs.greyship.tech/self-hosting
 MSG
 }

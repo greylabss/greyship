@@ -20,9 +20,6 @@ import (
 
 // Auth is the slice of auth.Service the handlers use; tests swap in a fake.
 type Auth interface {
-	StartEmail(ctx context.Context, email, ip string) error
-	VerifyEmail(ctx context.Context, email, code, userAgent string) (string, store.User, error)
-	CompleteOAuth(ctx context.Context, id auth.Identity, userAgent string) (string, store.User, error)
 	SessionUser(ctx context.Context, token string) (store.User, error)
 	Logout(ctx context.Context, token string) error
 	Teams(ctx context.Context, userID string) ([]store.ListUserTeamsRow, error)
@@ -53,7 +50,6 @@ type Options struct {
 	PushKey string
 	// WebhookSecret checks GitHub's deliveries (GREYSHIP_GITHUB_WEBHOOK_SECRET).
 	WebhookSecret string
-	Providers     map[string]auth.Provider
 	Signer        auth.Signer
 	DashboardURL  string
 	AppsDomain    string // services are served at <label>.<AppsDomain> (F-50)
@@ -76,10 +72,9 @@ type Server struct {
 func New(o Options) *Server {
 	s := &Server{Options: o, mux: http.NewServeMux()}
 	s.mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
-	s.mux.HandleFunc("POST /v1/auth/email/start", s.startEmail)
-	s.mux.HandleFunc("POST /v1/auth/email/verify", s.verifyEmail)
-	s.mux.HandleFunc("GET /v1/auth/oauth/{provider}/start", s.startOAuth)
-	s.mux.HandleFunc("GET /v1/auth/oauth/{provider}/callback", s.oauthCallback)
+	s.mux.HandleFunc("GET /v1/auth/setup", s.setupStatus)
+	s.mux.HandleFunc("POST /v1/auth/setup", s.setup)
+	s.mux.HandleFunc("POST /v1/auth/password/login", s.passwordLogin)
 	s.mux.HandleFunc("POST /v1/auth/logout", s.logout)
 	s.mux.Handle("GET /v1/me", s.requireUser(http.HandlerFunc(s.me)))
 
@@ -93,8 +88,8 @@ func New(o Options) *Server {
 	s.mux.Handle("POST /v1/tokens", s.requireUser(http.HandlerFunc(s.createToken)))
 	s.mux.Handle("DELETE /v1/tokens/{id}", s.requireUser(http.HandlerFunc(s.revokeToken)))
 
-	if o.Accounts != nil {
-		s.mux.HandleFunc("POST /v1/auth/password/login", s.passwordLogin)
+	{
+		s.mux.Handle("GET /v1/me/usage", s.requireUser(http.HandlerFunc(s.myUsage)))
 		s.mux.Handle("POST /v1/me/password", s.requireUser(http.HandlerFunc(s.changeOwnPassword)))
 		s.mux.Handle("POST /v1/admin/users", s.requireAdmin(s.adminCreateUser))
 		s.mux.Handle("PATCH /v1/admin/users/{id}", s.requireAdmin(s.adminUpdateUser))
@@ -124,7 +119,6 @@ func New(o Options) *Server {
 		s.mux.Handle("DELETE /v1/push/subscriptions/{id}", s.requireUser(http.HandlerFunc(s.deletePushSubscription)))
 	}
 	s.mux.Handle("GET /v1/teams/{team}/projects", s.requireUser(http.HandlerFunc(s.listProjects)))
-	s.mux.Handle("GET /v1/teams/{team}/usage/builds", s.requireUser(http.HandlerFunc(s.buildUsage)))
 	s.mux.Handle("POST /v1/teams/{team}/projects", s.requireUser(http.HandlerFunc(s.createProject)))
 	s.mux.Handle("GET /v1/projects/{id}", s.requireUser(http.HandlerFunc(s.getProject)))
 	s.mux.Handle("GET /v1/teams/{team}/projects/{slug}", s.requireUser(http.HandlerFunc(s.projectBySlug)))

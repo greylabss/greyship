@@ -55,16 +55,21 @@ Greyship is a handful of Go programs that talk to each other through one Postgre
 
 ## 1.2 Signing in
 
-There are no passwords. You prove you own an email address, or a Google or GitHub account.
+You sign in with an **email and a password**. There are no emailed codes, no Google or GitHub login, and nobody signs themselves up.
+
+**The first time:** a brand-new instance has no accounts. Whoever opens the dashboard first sees "Create the owner account" and picks an email and password. That works exactly once. The owner is an **admin** and adds everyone else.
+
+**Adding people:** the admin opens Admin > Users > Add user, types an email, a name and a password, and ticks "Admin" if that person should manage the instance too. That is how the beta works: the founder adds each tester and sends them their password.
 
 **On the website:**
-1. You type your email. The API sends a 6-digit code (through Resend).
-2. You type the code back. The API checks it. If you're new, it creates your account and a personal team, provided your email is on the beta invite list.
-3. The API gives your browser a **session cookie**: a long random secret. Only a fingerprint (hash) of it is stored in the database, so even someone reading the database can't use it.
+1. You type your email and password. The API checks a salted PBKDF2 fingerprint of the password (the password itself is never stored), counts wrong tries (8 per email, 30 per address, 15 minutes), and answers the same way for a wrong password and an unknown email.
+2. The API gives your browser a **session cookie**: a long random secret. Only a fingerprint (hash) of it is stored in the database, so even someone reading the database can't use it.
 
-**Email:** the admin pastes a Resend key and domain in Admin > Email. The key is encrypted with the instance's master key before it is saved. Every email (login codes, notifications) asks `mail.Dynamic` which provider to use at that moment, so changes apply at once and, with email off, codes land in a folder on the server instead.
+**Forgot your password?** Nobody gets an email. Whoever has access to the server (SSH) runs `greyship-admin reset-password <email>`, which prints a new random password once and signs that account out everywhere. That is the same idea as Coolify's reset command.
 
-**With a password:** an admin can create an account with a password for someone. They type email and password; the API checks a salted PBKDF2 hash (never the password itself), counts wrong tries (8 per email, 15 minutes) and then gives the same session cookie.
+**Limits:** the admin can also give each user a memory limit, a CPU limit and a limit on builds at once (Admin > Users > Limits). Before starting an instance for a user, the scheduler adds up what that user's apps already hold. If the new one doesn't fit, the deploy fails with a message that says which limit, and the version that is already live keeps serving. No limit set means no limit.
+
+**Email:** only for deploy notifications. The admin pastes a Resend key and domain in Admin > Email; the key is encrypted with the instance's master key before it is saved.
 
 **In the terminal (`grey login`):**
 1. The CLI asks the API for a "device code" and opens `greyship.tech/device` in your browser, showing a short code like `KRWT-PLMB`.
@@ -116,8 +121,8 @@ There are three ways code becomes a running app. They meet in the middle.
 Why: compiling Go needs a lot of CPU for a minute or two, and doing that on the same server as users' apps slowed both down. A fresh gin project took 118 seconds. Fly rents out machines with **dedicated CPUs by the second**, and a stopped machine costs nothing but its disk.
 
 **What happens in one server build:**
-1. The builder (on our server) reads the team's plan. Free gets a 2-CPU machine, Pro 4, Team 8.
-2. **Paying teams** have their own Fly machine with its own disk (a "volume") holding their Go caches, so their second build is fast. That machine is only ever used for that team, so no team can tamper with another's cache. **Free teams** get a fresh machine that is destroyed after the build.
+1. The builder (on our server) picks the machine size from its configuration.
+2. **Every team** has its own Fly machine with its own disk (a "volume") holding their Go caches, so their second build is fast. That machine is only ever used for that team, so no team can tamper with another's cache.
 3. The builder starts the machine and hands it only what it needs: a link to download the code, a one-time pass (a token valid for this one build), and the API's address. It never sends secrets, env vars or storage keys.
 4. On the machine, `greyship-buildd`:
    1. downloads the code;
@@ -127,7 +132,7 @@ Why: compiling Go needs a lot of CPU for a minute or two, and doing that on the 
    5. wipes its workspace and exits.
 
    Exiting stops the machine, so billing stops.
-5. The builder has been relaying those log lines to you all along. When the result arrives, it checks the binaries really are in R2 with the right sizes, records them, and notes the build time for the monthly build-minute count (Free: 100 minutes).
+5. The builder has been relaying those log lines to you all along. When the result arrives, it checks the binaries really are in R2 with the right sizes, records them, and notes how long the build took.
 
 The images Fly boots are built by `make build-images`: one per Go version (1.24–1.27), each holding the official Go toolchain plus `greyship-buildd`. They're pushed to Fly's registry under the app `greyship-build`.
 
@@ -182,7 +187,7 @@ Every `main.go` does the same four things:
 - **`internal/store/queries/*.sql`** hold every SQL query, written by hand. The `sqlc` tool turns them into typed Go functions in `internal/store/*.sql.go` (never edited by hand). So `store.New(pool).GetDeployment(ctx, id)` runs exactly the SQL named `GetDeployment` in [`deployments.sql`](../internal/store/queries/deployments.sql).
 - The big tables:
   - `users`, `teams`, `memberships`: who's who;
-  - `sessions`, `tokens`, `device_codes`, `login_codes`: signing in;
+  - `sessions`, `tokens`, `device_codes`, `password_failures`: signing in;
   - `projects`, `services`: what you deploy;
   - `deployments`, `artifacts`, `build_logs`: each version and its binaries and build log;
   - `releases`: which deployment is live;
@@ -198,7 +203,7 @@ Every `main.go` does the same four things:
 This is how the programs hand work to each other.
 
 - **Adding a job** ([`queue.go`](../internal/bus/queue.go)): `bus.Enqueue` inserts a row into `jobs` with a kind (`build.requested`, `deployment.release`, …) and a JSON payload, inside the same database transaction as the change that caused it. Then Postgres's `NOTIFY` wakes the listening workers. If the transaction fails, the job never exists, so there's no "deployment marked queued but no build job".
-- **Groups and plans:** `EnqueueGrouped` puts a job in a group, the team, with a limit and a priority from the plan. A team on Free runs 1 build at a time, Pro 2, and higher priority is picked first.
+- **Groups:** `EnqueueGrouped` puts a job in a group, the team, with a limit: the admin's "builds at once" for that user. A user with a limit of 1 runs one build at a time; a user with no limit isn't grouped.
 - **Taking a job** (`Claim`): a worker runs one SQL statement that picks the oldest eligible job, marks it `running` and gives it a **lease** (a deadline). Workers renew the lease while they work. If a worker dies, the lease runs out and another worker takes the job. So every handler is written to be safe if it runs twice.
 - **Finishing:** `Complete`, or on error `Fail`, which schedules a retry with a growing delay, and after 5 attempts gives up and marks the job failed.
 - **The worker loop** ([`worker.go`](../internal/bus/worker.go)): hold one database connection to *listen* for new jobs; when woken, or every few seconds anyway, claim and handle. *Lesson learned:* each worker needs two connections (one to listen, one to work), so the builder sizes its pool to its number of workers.
@@ -220,17 +225,15 @@ It puts the user, and the token's team, into the request context for the handler
 
 ## 2.5 Signing in, in code (`internal/auth`)
 
-- **Email code** ([`service.go`](../internal/auth/service.go)):
-  - `StartEmail` limits how often codes can be requested per email and per IP, stores a *hash* of a random 6-digit code, and queues the email.
-  - `VerifyEmail`, in one transaction: finds the latest unexpired code, counts the attempt (5 tries max), compares in constant time, marks it used, then `findOrCreateUser`, which also creates a personal team for new users if the **signup allowlist** permits, then `createSession`.
-- **OAuth** ([`oauth.go`](../internal/auth/oauth.go)): the standard "code + PKCE" dance with Google or GitHub. An existing linked account signs in. A new one is linked by email only if the provider says the email is verified.
+- **Password sign-in** ([`accounts.go`](../internal/auth/accounts.go)): `LoginPassword` counts recent failures per email and per IP (8 and 30 in 15 minutes) and refuses with a rate-limit error past them; it hashes a dummy password for unknown emails so timing doesn't show which exist; on success it clears the failures and creates a session. Hashes look like `pbkdf2-sha256$600000$salt$hash`, so the cost can change later.
+- **The owner and other accounts:** `Setup` creates the first account (an admin) and signs it in, inside a transaction that locks `users` and refuses if anyone exists (and, with `GREYSHIP_OWNER_EMAIL`, if the email differs). `CreateUser` is what Admin > Add user calls. `ResetPassword` (`greyship-api reset-password`) sets a random password, deletes the account's sessions and its failure count.
+- **Limits** ([`limits.go`](../internal/auth/limits.go) and [`internal/sched/limits.go`](../internal/sched/limits.go)): `SetLimits` stores the three limits on the user's personal team. `checkLimits` runs inside the transaction that records every new instance (a release or a scale-up): it locks the team, adds up the memory and CPU of its instances that are starting, running or paused, and refuses with a `LimitError` if the new one would pass a limit. A release turns that into a failed deployment with the message; a scale-up just doesn't happen.
 - **Device flow** ([`device.go`](../internal/api/device.go) and the auth service):
   - `StartDevice` makes a `device_code` (secret, for the CLI) and a `user_code` (short, for you).
   - Approving in the dashboard ties them to your team.
   - `pollDevice` hands the CLI a fresh `gs_` token exactly once.
 - **Client IP for rate limits** (`clientIP` in `server.go`): the API only ever sees the router connecting from the server itself, so it trusts the address the router wrote in `X-Forwarded-For`. When the dashboard forwards a browser's request, the dashboard adds the real visitor address with a shared secret, `GREYSHIP_PROXY_SECRET`.
 
-- **Who may sign up** ([`users.go`](../internal/auth/users.go) `findOrCreateUser`, `Signup.check` in [`service.go`](../internal/auth/service.go)): during the beta, the API asks the beta app whether the email applied ([`internal/beta`](../internal/beta/beta.go) → `beta/app/api/testers/check`). Testers get in and get `beta_tester`, which the dashboard shows as a checkmark; allowlisted emails get in too.
 
 ## 2.6 `grey deploy`, in code (`internal/cli`, `internal/deploy`)
 
@@ -261,18 +264,17 @@ The CLI is in [`internal/cli`](../internal/cli); `cmd/greyship/main.go` just run
 1. `StartBuild` moves the deployment from `queued` to `building` (or does nothing if it's already done: safe to repeat).
 2. Downloads the tarball and checks its sha256 against what the CLI declared.
 3. Runs detection again on the server's copy. This one counts, because the laptop's output can't be trusted.
-4. `checkMinutes`: refuses if a Free team has used its 100 build minutes this month.
-5. Calls **`b.Runner.Run(job)`**. `Runner` is an interface ([`runner.go`](../internal/build/runner.go)) with two implementations; the builder doesn't care which:
+4. Calls **`b.Runner.Run(job)`**. `Runner` is an interface ([`runner.go`](../internal/build/runner.go)) with two implementations; the builder doesn't care which:
    - **`LocalRunner`** wraps the gVisor `Sandbox` ([`sandbox.go`](../internal/build/sandbox.go)), used on a laptop and in tests. It runs `docker run --runtime=runsc` with no network except our module proxy, a read-only filesystem, and capped CPU and memory.
    - **`fly.Runner`** ([`fly/runner.go`](../internal/build/fly/runner.go)), in production:
      - `lease` picks the team's stopped machine with its cache volume (`PickBuildMachine`, a `SELECT … FOR UPDATE SKIP LOCKED`, so two builders never take the same one), or creates one through the Fly Machines API ([`fly/client.go`](../internal/build/fly/client.go), plain HTTPS calls to `api.machines.dev`).
      - The job goes in one environment variable, `GREYSHIP_BUILD_JOB`: the source download link, the targets, the API address and the one-build token (signed with `SignToken`).
-     - `follow` polls every half second: new rows in `build_reports` become your log lines, the outcome row ends the wait, and a machine that stops without reporting is an error that gets retried. Past the plan's timeout, it stops the machine.
-     - `release` stops the machine and returns it to the pool, or destroys it for Free.
+     - `follow` polls every half second: new rows in `build_reports` become your log lines, the outcome row ends the wait, and a machine that stops without reporting is an error that gets retried. Past the build timeout, it stops the machine.
+     - `release` stops the machine and returns it to the pool.
    - **`greyship-buildd`** ([`internal/buildd/buildd.go`](../internal/buildd/buildd.go)), on the Fly machine: download, `unpack` (refusing any file path that escapes the folder), `go mod download`, `go build` per target, `upload` (asks `POST /v1/internal/builds/{id}/upload` for a link signed for that size), and the reporter, which batches log lines to `…/report` twice a second. It always reports an outcome, even on failure.
    - **The API side of that** ([`fly/reports.go`](../internal/build/fly/reports.go)): every call must carry the build token for *that* deployment, and the deployment must still be `building`. Lines are capped in number and length.
-6. Back in `build`: records runner, machine size and seconds (`RecordBuildRun`), creates an `artifacts` row per binary, then `finish`.
-7. **Errors** are sorted into the user's fault (doesn't compile, too slow, bad config), which fails the deployment and doesn't retry, and ours (storage down, Fly hiccup), which retries the job.
+5. Back in `build`: records runner, machine size and seconds (`RecordBuildRun`), creates an `artifacts` row per binary, then `finish`.
+6. **Errors** are sorted into the user's fault (doesn't compile, too slow, bad config), which fails the deployment and doesn't retry, and ours (storage down, Fly hiccup), which retries the job.
 
 ## 2.8 GitHub deploys (`internal/github`)
 

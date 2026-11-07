@@ -1,22 +1,15 @@
 // Response shapes for the /v1 API. They follow docs/architecture.md §3; when the
 // OpenAPI spec exists these become generated types and screens stay unchanged.
 
-// "unlimited" is every team on an instance without plans (a self-hosted one).
-export type Plan = "free" | "pro" | "team" | "unlimited";
-
 export type Team = {
   slug: string;
   name: string;
-  plan: Plan;
-  spendCapCents: number;
 };
 
 export type User = {
   id: string;
   name: string;
   email: string;
-  betaTester?: boolean;
-  hasPassword?: boolean;
   initials: string;
 };
 
@@ -90,33 +83,15 @@ export type ProjectSummary = {
   serviceCount: number;
   requests24h: number;
   requestsSeries: number[];
-  spendCents: number;
 };
 
-export type UsageMeter = {
-  label: string;
-  unit: string;
-  used: number;
-  included: number;
-};
-
-export type Usage = {
-  period: string;
-  resetsOn: string;
-  meters: UsageMeter[];
-  spendCents: number;
-  projectedCents: number;
-  byProject: { slug: string; spendCents: number }[];
-  overCap: boolean;
-  creditsCents: number;
-};
-
-export type Invoice = {
-  id: string;
-  period: string;
-  amountCents: number;
-  status: "paid" | "open";
-  provider: "stripe" | "paystack";
+// What a user's running apps hold next to the limits their instance admin set. A null max means no limit.
+export type ResourceUsage = {
+  memoryUsedMb: number;
+  memoryMaxMb: number | null;
+  cpuUsedCores: number;
+  cpuMaxCores: number | null;
+  concurrentBuildsMax: number | null;
 };
 
 export type ActivityItem = Deployment & { project: string };

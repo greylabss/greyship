@@ -77,64 +77,42 @@ func (q *Queries) CountPasswordFailuresForIP(ctx context.Context, arg CountPassw
 	return count, err
 }
 
-const createIdentity = `-- name: CreateIdentity :exec
-INSERT INTO oauth_identities (provider, subject, user_id, email) VALUES ($1, $2, $3, $4)
-`
-
-type CreateIdentityParams struct {
-	Provider string
-	Subject  string
-	UserID   string
-	Email    string
-}
-
-func (q *Queries) CreateIdentity(ctx context.Context, arg CreateIdentityParams) error {
-	_, err := q.db.Exec(ctx, createIdentity,
-		arg.Provider,
-		arg.Subject,
-		arg.UserID,
-		arg.Email,
-	)
-	return err
-}
-
 const createTeam = `-- name: CreateTeam :one
-INSERT INTO teams (slug, name, plan) VALUES ($1, $2, COALESCE(NULLIF($3::text, ''), 'free')) RETURNING id, slug, name, plan, spend_cap_cents, created_at
+INSERT INTO teams (slug, name) VALUES ($1, $2) RETURNING id, slug, name, spend_cap_cents, created_at, max_memory_mb, max_cpu_millis, max_concurrent_builds
 `
 
 type CreateTeamParams struct {
 	Slug string
 	Name string
-	Plan string
 }
 
-// An empty plan means the default, free.
 func (q *Queries) CreateTeam(ctx context.Context, arg CreateTeamParams) (Team, error) {
-	row := q.db.QueryRow(ctx, createTeam, arg.Slug, arg.Name, arg.Plan)
+	row := q.db.QueryRow(ctx, createTeam, arg.Slug, arg.Name)
 	var i Team
 	err := row.Scan(
 		&i.ID,
 		&i.Slug,
 		&i.Name,
-		&i.Plan,
 		&i.SpendCapCents,
 		&i.CreatedAt,
+		&i.MaxMemoryMb,
+		&i.MaxCpuMillis,
+		&i.MaxConcurrentBuilds,
 	)
 	return i, err
 }
 
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, name, avatar_url) VALUES ($1, $2, $3) RETURNING id, email, name, avatar_url, created_at, beta_tester, is_owner, password_hash
+INSERT INTO users (email, name) VALUES ($1, $2) RETURNING id, email, name, avatar_url, created_at, is_owner, password_hash
 `
 
 type CreateUserParams struct {
-	Email     string
-	Name      string
-	AvatarUrl string
+	Email string
+	Name  string
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.Name, arg.AvatarUrl)
+	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.Name)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -142,55 +120,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Name,
 		&i.AvatarUrl,
 		&i.CreatedAt,
-		&i.BetaTester,
 		&i.IsOwner,
 		&i.PasswordHash,
 	)
 	return i, err
 }
 
-const fillUserProfile = `-- name: FillUserProfile :exec
-UPDATE users
-SET name = CASE WHEN name = '' THEN $1 ELSE name END,
-    avatar_url = CASE WHEN avatar_url = '' THEN $2 ELSE avatar_url END
-WHERE id = $3
-`
-
-type FillUserProfileParams struct {
-	Name      string
-	AvatarUrl string
-	ID        string
-}
-
-func (q *Queries) FillUserProfile(ctx context.Context, arg FillUserProfileParams) error {
-	_, err := q.db.Exec(ctx, fillUserProfile, arg.Name, arg.AvatarUrl, arg.ID)
-	return err
-}
-
-const getIdentity = `-- name: GetIdentity :one
-SELECT provider, subject, user_id, email, created_at FROM oauth_identities WHERE provider = $1 AND subject = $2
-`
-
-type GetIdentityParams struct {
-	Provider string
-	Subject  string
-}
-
-func (q *Queries) GetIdentity(ctx context.Context, arg GetIdentityParams) (OauthIdentity, error) {
-	row := q.db.QueryRow(ctx, getIdentity, arg.Provider, arg.Subject)
-	var i OauthIdentity
-	err := row.Scan(
-		&i.Provider,
-		&i.Subject,
-		&i.UserID,
-		&i.Email,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, avatar_url, created_at, beta_tester, is_owner, password_hash FROM users WHERE email = $1
+SELECT id, email, name, avatar_url, created_at, is_owner, password_hash FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -202,7 +139,6 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Name,
 		&i.AvatarUrl,
 		&i.CreatedAt,
-		&i.BetaTester,
 		&i.IsOwner,
 		&i.PasswordHash,
 	)
@@ -210,7 +146,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, avatar_url, created_at, beta_tester, is_owner, password_hash FROM users WHERE id = $1
+SELECT id, email, name, avatar_url, created_at, is_owner, password_hash FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -222,7 +158,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.Name,
 		&i.AvatarUrl,
 		&i.CreatedAt,
-		&i.BetaTester,
 		&i.IsOwner,
 		&i.PasswordHash,
 	)
@@ -230,18 +165,20 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 }
 
 const listUserTeams = `-- name: ListUserTeams :many
-SELECT t.id, t.slug, t.name, t.plan, t.spend_cap_cents, t.created_at, m.role FROM teams t JOIN memberships m ON m.team_id = t.id
+SELECT t.id, t.slug, t.name, t.spend_cap_cents, t.created_at, t.max_memory_mb, t.max_cpu_millis, t.max_concurrent_builds, m.role FROM teams t JOIN memberships m ON m.team_id = t.id
 WHERE m.user_id = $1 ORDER BY t.created_at
 `
 
 type ListUserTeamsRow struct {
-	ID            string
-	Slug          string
-	Name          string
-	Plan          string
-	SpendCapCents int32
-	CreatedAt     time.Time
-	Role          string
+	ID                  string
+	Slug                string
+	Name                string
+	SpendCapCents       int32
+	CreatedAt           time.Time
+	MaxMemoryMb         *int32
+	MaxCpuMillis        *int32
+	MaxConcurrentBuilds *int32
+	Role                string
 }
 
 func (q *Queries) ListUserTeams(ctx context.Context, userID string) ([]ListUserTeamsRow, error) {
@@ -257,9 +194,11 @@ func (q *Queries) ListUserTeams(ctx context.Context, userID string) ([]ListUserT
 			&i.ID,
 			&i.Slug,
 			&i.Name,
-			&i.Plan,
 			&i.SpendCapCents,
 			&i.CreatedAt,
+			&i.MaxMemoryMb,
+			&i.MaxCpuMillis,
+			&i.MaxConcurrentBuilds,
 			&i.Role,
 		); err != nil {
 			return nil, err
@@ -270,38 +209,6 @@ func (q *Queries) ListUserTeams(ctx context.Context, userID string) ([]ListUserT
 		return nil, err
 	}
 	return items, nil
-}
-
-const makeOwnerByEmail = `-- name: MakeOwnerByEmail :exec
-UPDATE users SET is_owner = true WHERE email = $1
-`
-
-func (q *Queries) MakeOwnerByEmail(ctx context.Context, email string) error {
-	_, err := q.db.Exec(ctx, makeOwnerByEmail, email)
-	return err
-}
-
-const makeOwnerIfFirst = `-- name: MakeOwnerIfFirst :one
-UPDATE users u SET is_owner = true
-WHERE u.id = $1 AND NOT EXISTS (SELECT 1 FROM users o WHERE o.is_owner)
-RETURNING true
-`
-
-// The first account on an instance owns it. Returns whether this call made the owner.
-func (q *Queries) MakeOwnerIfFirst(ctx context.Context, id string) (bool, error) {
-	row := q.db.QueryRow(ctx, makeOwnerIfFirst, id)
-	var column_1 bool
-	err := row.Scan(&column_1)
-	return column_1, err
-}
-
-const markBetaTester = `-- name: MarkBetaTester :exec
-UPDATE users SET beta_tester = true WHERE id = $1
-`
-
-func (q *Queries) MarkBetaTester(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, markBetaTester, id)
-	return err
 }
 
 const recordPasswordFailure = `-- name: RecordPasswordFailure :exec

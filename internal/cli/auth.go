@@ -16,7 +16,6 @@ type user struct {
 	Name  string `json:"name"`
 	Teams []struct {
 		Slug string `json:"slug"`
-		Plan string `json:"plan"`
 		Role string `json:"role"`
 	} `json:"teams"`
 	TokenTeam string `json:"token_team,omitempty"`
@@ -199,7 +198,7 @@ func whoamiCmd(a *App, asJSON *bool) *cobra.Command {
 			}
 			teams := make([]string, 0, len(me.User.Teams))
 			for _, t := range me.User.Teams {
-				teams = append(teams, fmt.Sprintf("%s (%s, %s)", t.Slug, t.Role, t.Plan))
+				teams = append(teams, fmt.Sprintf("%s (%s)", t.Slug, t.Role))
 			}
 			fmt.Fprintf(a.Out, "%s on %s\nteams: %s\n", me.User.Email, s.api.base, strings.Join(teams, ", "))
 			return nil

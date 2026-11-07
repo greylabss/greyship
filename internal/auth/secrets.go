@@ -4,36 +4,13 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 )
-
-const codeDigits = 6
-
-// newCode returns a uniformly random 6-digit code; crypto/rand.Int avoids modulo bias.
-func newCode() (string, error) {
-	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
-	if err != nil {
-		return "", fmt.Errorf("generate login code: %w", err)
-	}
-	return fmt.Sprintf("%0*d", codeDigits, n.Int64()), nil
-}
-
-// hashCode binds the code to the email so a leaked hash can't be replayed for another address.
-func hashCode(email, code string) []byte {
-	sum := sha256.Sum256([]byte(email + ":" + code))
-	return sum[:]
-}
-
-func codeMatches(stored []byte, email, code string) bool {
-	return subtle.ConstantTimeCompare(stored, hashCode(email, code)) == 1
-}
 
 func newToken() (string, error) {
 	b := make([]byte, 32)

@@ -22,8 +22,8 @@ export default function SettingsPage({ params }: PageProps<"/[team]/[project]/se
 
 async function Content({ params }: { params: PageProps<"/[team]/[project]/settings">["params"] }) {
   const { team, project: slug } = await params;
-  const [project, info] = await Promise.all([api.getProject(team, slug), api.getTeam(team)]);
+  const project = await api.getProject(team, slug);
   if (!project) notFound();
   if (liveMode) return <Arrives title="Project settings" when="a later release. Scaling and memory come from greyship.toml until then" />;
-  return <SettingsView team={team} project={slug} services={project.services} plan={info.plan} />;
+  return <SettingsView team={team} project={slug} services={project.services} />;
 }

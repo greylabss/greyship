@@ -1,4 +1,4 @@
-import type { ActivityItem, Invoice, ProjectSummary, Team, Usage, User } from "@/lib/api/types";
+import type { ActivityItem, ProjectSummary, ResourceUsage, Team, User } from "@/lib/api/types";
 import type { Scenario } from "./scenarios";
 
 export const me: User = {
@@ -6,17 +6,10 @@ export const me: User = {
   name: "Haki",
   email: "haki@acme.dev",
   initials: "H",
-  betaTester: true,
 };
 
-export function team(scenario: Scenario): Team {
-  const paid = scenario === "pro";
-  return {
-    slug: "haki",
-    name: "haki",
-    plan: paid ? "pro" : "free",
-    spendCapCents: paid ? 2500 : 1000,
-  };
+export function team(): Team {
+  return { slug: "haki", name: "haki" };
 }
 
 const acmeSeries = [1.2, 1.4, 1.1, 0.9, 0.7, 0.6, 0.8, 1.5, 2.4, 3.1, 3.4, 3.2, 2.9, 3.3, 3.6, 3.1, 2.8, 2.6, 2.4, 2.2, 1.9, 1.7, 1.5, 1.3];
@@ -35,7 +28,6 @@ export function projects(scenario: Scenario): ProjectSummary[] {
     serviceCount: 4,
     requests24h: 48_200,
     requestsSeries: acmeSeries,
-    spendCents: 31,
   };
   const bot: ProjectSummary = {
     slug: "telegram-bot",
@@ -46,7 +38,6 @@ export function projects(scenario: Scenario): ProjectSummary[] {
     serviceCount: 1,
     requests24h: 312,
     requestsSeries: botSeries,
-    spendCents: 0,
   };
   const payments: ProjectSummary = {
     slug: "payments-service",
@@ -57,7 +48,6 @@ export function projects(scenario: Scenario): ProjectSummary[] {
     serviceCount: 2,
     requests24h: 9_400,
     requestsSeries: paySeries,
-    spendCents: 12,
   };
 
   switch (scenario) {
@@ -81,9 +71,9 @@ export function projects(scenario: Scenario): ProjectSummary[] {
       ];
     case "sleeping":
       return [
-        { ...acme, health: "sleeping", requests24h: 0, requestsSeries: acmeSeries.map(() => 0), spendCents: 0 },
+        { ...acme, health: "sleeping", requests24h: 0, requestsSeries: acmeSeries.map(() => 0) },
         bot,
-        { ...payments, health: "sleeping", requests24h: 0, requestsSeries: paySeries.map(() => 0), spendCents: 0 },
+        { ...payments, health: "sleeping", requests24h: 0, requestsSeries: paySeries.map(() => 0) },
       ];
     case "crashing":
       return [
@@ -106,52 +96,9 @@ export function projects(scenario: Scenario): ProjectSummary[] {
   }
 }
 
-export function usage(scenario: Scenario): Usage {
-  if (scenario === "empty") {
-    return {
-      period: "October",
-      resetsOn: "Nov 1",
-      meters: [
-        { label: "Compute", unit: "vCPU-h", used: 0, included: 50 },
-        { label: "Memory", unit: "GB-h", used: 0, included: 100 },
-        { label: "Requests", unit: "requests", used: 0, included: 100_000 },
-        { label: "Egress", unit: "GB", used: 0, included: 5 },
-      ],
-      spendCents: 0,
-      projectedCents: 0,
-      byProject: [],
-      overCap: false,
-      creditsCents: 0,
-    };
-  }
-  const overCap = scenario === "over-cap";
-  return {
-    period: "October",
-    resetsOn: "Nov 1",
-    meters: [
-      { label: "Compute", unit: "vCPU-h", used: overCap ? 50 : 6.1, included: 50 },
-      { label: "Memory", unit: "GB-h", used: overCap ? 84.2 : 9.4, included: 100 },
-      { label: "Requests", unit: "requests", used: overCap ? 100_000 : 58_000, included: 100_000 },
-      { label: "Egress", unit: "GB", used: overCap ? 3.9 : 0.8, included: 5 },
-    ],
-    spendCents: overCap ? 1000 : 43,
-    projectedCents: overCap ? 1000 : 61,
-    byProject: [
-      { slug: "acme-api", spendCents: overCap ? 720 : 31 },
-      { slug: "payments-service", spendCents: overCap ? 280 : 12 },
-      { slug: "telegram-bot", spendCents: 0 },
-    ],
-    overCap,
-    creditsCents: 0,
-  };
-}
-
-export function invoices(scenario: Scenario): Invoice[] {
-  if (scenario !== "pro") return [];
-  return [
-    { id: "inv_2026_09", period: "September 2026", amountCents: 800, status: "paid", provider: "paystack" },
-    { id: "inv_2026_08", period: "August 2026", amountCents: 912, status: "paid", provider: "paystack" },
-  ];
+export function resourceUsage(scenario: Scenario): ResourceUsage {
+  if (scenario === "empty") return { memoryUsedMb: 0, memoryMaxMb: 1024, cpuUsedCores: 0, cpuMaxCores: 2, concurrentBuildsMax: 1 };
+  return { memoryUsedMb: 384, memoryMaxMb: 1024, cpuUsedCores: 0.75, cpuMaxCores: 2, concurrentBuildsMax: 1 };
 }
 
 export function activity(scenario: Scenario): ActivityItem[] {

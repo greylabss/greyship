@@ -66,9 +66,9 @@ export function CreateUser() {
           <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
         </Field>
       </div>
-      <Field label="Password" hint="10 to 128 characters. Leave empty and they sign in with an email code. Share it safely; it isn't shown again.">
+      <Field label="Password" hint="10 to 128 characters. Give it to them yourself; it isn't shown again.">
         <div className="flex gap-2">
-          <Input value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" mono />
+          <Input value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="off" mono required />
           <Button type="button" variant="secondary" onClick={() => setPassword(generatePassword())}>
             Generate
           </Button>

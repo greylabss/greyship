@@ -2,48 +2,10 @@ package auth
 
 import (
 	"errors"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
 )
-
-func TestNewCode(t *testing.T) {
-	six := regexp.MustCompile(`^\d{6}$`)
-	seen := map[string]bool{}
-	for range 200 {
-		code, err := newCode()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !six.MatchString(code) {
-			t.Fatalf("code %q is not 6 digits", code)
-		}
-		seen[code] = true
-	}
-	if len(seen) < 190 {
-		t.Fatalf("only %d distinct codes in 200 draws", len(seen))
-	}
-}
-
-func TestCodeMatches(t *testing.T) {
-	stored := hashCode("a@b.co", "123456")
-	tests := []struct {
-		name, email, code string
-		want              bool
-	}{
-		{"right email and code", "a@b.co", "123456", true},
-		{"wrong code", "a@b.co", "123457", false},
-		{"code for another email", "x@b.co", "123456", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := codeMatches(stored, tt.email, tt.code); got != tt.want {
-				t.Fatalf("codeMatches = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
 
 func TestTokensAreRandomAndHashed(t *testing.T) {
 	a, _ := newToken()
@@ -143,27 +105,5 @@ func TestNormalizeEmail(t *testing.T) {
 				t.Fatalf("NormalizeEmail(%q) err = %v, want ErrInvalidEmail", tt.in, err)
 			}
 		})
-	}
-}
-
-func TestAllowlist(t *testing.T) {
-	list := ParseAllowlist(" Ada@Example.com, @greylabs.dev ,,")
-	tests := []struct {
-		email string
-		ok    bool
-	}{
-		{"ada@example.com", true},
-		{"bob@example.com", false},
-		{"haki@greylabs.dev", true},
-		{"haki@evilgreylabs.dev", false},
-		{"haki@greylabs.dev.evil.com", false},
-	}
-	for _, tt := range tests {
-		if got := list.allows(tt.email); got != tt.ok {
-			t.Errorf("allows(%s) = %v, want %v", tt.email, got, tt.ok)
-		}
-	}
-	if !Allowlist(nil).allows("anyone@x.io") {
-		t.Fatal("an empty allowlist must let everyone sign up")
 	}
 }

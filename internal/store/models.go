@@ -170,17 +170,6 @@ type Job struct {
 	Priority    int32
 }
 
-type LoginCode struct {
-	ID         string
-	Email      string
-	CodeHash   []byte
-	Attempts   int32
-	Ip         string
-	ExpiresAt  time.Time
-	ConsumedAt *time.Time
-	CreatedAt  time.Time
-}
-
 type MailSetting struct {
 	ID            bool
 	Enabled       bool
@@ -228,14 +217,6 @@ type NotificationSetting struct {
 	Kind   string
 	Email  bool
 	Push   bool
-}
-
-type OauthIdentity struct {
-	Provider  string
-	Subject   string
-	UserID    string
-	Email     string
-	CreatedAt time.Time
 }
 
 type PasswordFailure struct {
@@ -312,12 +293,14 @@ type Session struct {
 }
 
 type Team struct {
-	ID            string
-	Slug          string
-	Name          string
-	Plan          string
-	SpendCapCents int32
-	CreatedAt     time.Time
+	ID                  string
+	Slug                string
+	Name                string
+	SpendCapCents       int32
+	CreatedAt           time.Time
+	MaxMemoryMb         *int32
+	MaxCpuMillis        *int32
+	MaxConcurrentBuilds *int32
 }
 
 type Token struct {
@@ -348,7 +331,6 @@ type User struct {
 	Name         string
 	AvatarUrl    string
 	CreatedAt    time.Time
-	BetaTester   bool
 	IsOwner      bool
 	PasswordHash string
 }

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Looking after a Greyship server: greyship-admin status | logs [service] | codes | domain | upgrade | version
+# Looking after a Greyship server: greyship-admin status | logs [service] | reset-password <email> | domain | upgrade | version
 # The grey command (for deploying apps) is a different program; this one only runs on the server.
 set -eu
 services="api builder scheduler agent router dashboard"
@@ -16,14 +16,15 @@ case "${1:-status}" in
 		svc=${2:-api}
 		exec journalctl -u "greyship-$svc" -n 100 -f --no-pager
 		;;
-	codes)
-		# Without an email provider, login codes are saved as files. Shows the newest few, newest last.
-		dir=/var/lib/greyship/tmp/outbox
-		[ -d "$dir" ] || { echo "no login codes yet: nobody has asked for one"; exit 0; }
-		ls -tr "$dir" | tail -3 | while read -r f; do
-			echo "== $f"
-			cat "$dir/$f"
-		done
+	reset-password)
+		# A forgotten password is fixed here, on the server: the account gets a new random password, printed once, and
+		# is signed out everywhere.
+		[ "$(id -u)" = 0 ] || { echo "run as root: sudo greyship-admin reset-password <email>" >&2; exit 1; }
+		email=${2:-}
+		[ -n "$email" ] || { echo "usage: greyship-admin reset-password <email>" >&2; exit 1; }
+		# systemd reads greyship.env exactly as the service does, and runs the command as the same user.
+		exec systemd-run --quiet --wait --pipe --collect -p User=greyship -p EnvironmentFile=/etc/greyship/greyship.env \
+			/usr/local/lib/greyship/greyship-api reset-password "$email"
 		;;
 	domain)
 		# Switches a server that's running on its IP (plain HTTP) to your own domains with HTTPS, or moves it to others.
@@ -78,7 +79,7 @@ MSG
 		cat /usr/local/lib/greyship/VERSION 2>/dev/null || echo unknown
 		;;
 	*)
-		echo "usage: greyship-admin status | logs [service] | codes | domain | upgrade | version" >&2
+		echo "usage: greyship-admin status | logs [service] | reset-password <email> | domain | upgrade | version" >&2
 		exit 1
 		;;
 esac

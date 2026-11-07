@@ -69,7 +69,13 @@ func (s *Scheduler) ScaleUp(ctx context.Context, job bus.Job) error {
 	if err != nil {
 		return err
 	}
-	if _, err := s.startInstance(ctx, svc, art.ID, art.DeploymentID, node); err != nil {
+	_, err = s.startInstance(ctx, svc, art.ID, art.DeploymentID, node)
+	var limit *LimitError
+	if errors.As(err, &limit) {
+		s.Logger.Warn("not scaling up", "service", svc.ID, "reason", req.Reason, "limit", limit.Message)
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	s.Logger.Info("scaling up", "service", svc.ID, "reason", req.Reason, "node", node.Name)

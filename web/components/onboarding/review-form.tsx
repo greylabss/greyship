@@ -103,12 +103,10 @@ export function ReviewForm({ team, repo, detected }: { team: string; repo: strin
         <h2 className="font-semibold">Summary</h2>
         <dl className="flex flex-col gap-2.5 text-13">
           {[
-            ["Plan", "Free"],
             ["Services", String(services.length)],
             ["Memory per instance", "128 MB"],
             ["Scale to zero", "On"],
             ["Variables", String(env.filter((e) => e.k).length)],
-            ["Spend cap", "$0 (free tier)"],
           ].map(([k, v]) => (
             <div key={k} className="flex justify-between gap-3">
               <dt className="text-muted">{k}</dt>

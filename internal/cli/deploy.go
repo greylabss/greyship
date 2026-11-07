@@ -160,9 +160,7 @@ type logEnd struct {
 		URL     string `json:"url"`
 	} `json:"urls"`
 	Build *struct {
-		Seconds         int `json:"seconds"`
-		UsedMinutes     int `json:"used_minutes"`
-		IncludedMinutes int `json:"included_minutes"`
+		Seconds int `json:"seconds"`
 	} `json:"build,omitempty"`
 }
 
@@ -253,11 +251,7 @@ func (a *App) printBuildEnd(end logEnd) error {
 		urls[u.Service] = u.URL
 	}
 	if b := end.Build; b != nil {
-		if b.IncludedMinutes == 0 { // 0 is unlimited: an instance without plans
-			fmt.Fprintf(a.Out, "\nbuild: %ds\n", b.Seconds)
-		} else {
-			fmt.Fprintf(a.Out, "\nbuild: %ds · %d/%d min this month\n", b.Seconds, b.UsedMinutes, b.IncludedMinutes)
-		}
+		fmt.Fprintf(a.Out, "\nbuild: %ds\n", b.Seconds)
 	}
 	fmt.Fprintln(a.Out, "\n✓ Live")
 	tw := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)

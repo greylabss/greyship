@@ -36,7 +36,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 }
 
 const getMembershipByTeamID = `-- name: GetMembershipByTeamID :one
-SELECT t.id, t.slug, t.name, t.plan, t.spend_cap_cents, t.created_at, m.role FROM teams t JOIN memberships m ON m.team_id = t.id
+SELECT t.id, t.slug, t.name, t.spend_cap_cents, t.created_at, t.max_memory_mb, t.max_cpu_millis, t.max_concurrent_builds, m.role FROM teams t JOIN memberships m ON m.team_id = t.id
 WHERE m.user_id = $1 AND t.id = $2
 `
 
@@ -46,13 +46,15 @@ type GetMembershipByTeamIDParams struct {
 }
 
 type GetMembershipByTeamIDRow struct {
-	ID            string
-	Slug          string
-	Name          string
-	Plan          string
-	SpendCapCents int32
-	CreatedAt     time.Time
-	Role          string
+	ID                  string
+	Slug                string
+	Name                string
+	SpendCapCents       int32
+	CreatedAt           time.Time
+	MaxMemoryMb         *int32
+	MaxCpuMillis        *int32
+	MaxConcurrentBuilds *int32
+	Role                string
 }
 
 func (q *Queries) GetMembershipByTeamID(ctx context.Context, arg GetMembershipByTeamIDParams) (GetMembershipByTeamIDRow, error) {
@@ -62,9 +64,11 @@ func (q *Queries) GetMembershipByTeamID(ctx context.Context, arg GetMembershipBy
 		&i.ID,
 		&i.Slug,
 		&i.Name,
-		&i.Plan,
 		&i.SpendCapCents,
 		&i.CreatedAt,
+		&i.MaxMemoryMb,
+		&i.MaxCpuMillis,
+		&i.MaxConcurrentBuilds,
 		&i.Role,
 	)
 	return i, err

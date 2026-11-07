@@ -1,52 +1,46 @@
 ---
-title: Limits and plans
-description: What you get during the beta, and the plans after it.
+title: Limits
+description: What every deploy is subject to, and the limits your instance admin may set.
 ---
 
-Greyship is **free during the private beta**. Every account is on the Free plan.
+Greyship has **no plans and no billing**. Everyone on an instance can build and run as much as the server allows,
+unless the instance's admin limits them.
 
-## Free plan (beta)
+## Always
 
 | | |
 | --- | --- |
-| Projects | 3 |
-| Memory per instance | 128 MB |
-| CPU per instance | up to 1 CPU |
-| Instances per service | up to 2 |
-| Log retention | 1 day |
 | Source upload per deploy | 100 MB compressed |
-| Server build time | 10 minutes per build |
-| Server build machine | 2 dedicated CPUs, 4 GB |
-| Build minutes | 100 a month |
-| Concurrent server builds | 1 |
+| Binaries per deploy | 20, each up to 200 MB (100 MB compressed) |
+| Memory per instance | what the service asks for (`memory` in `greyship.toml`) |
+| Instances per service | what the service asks for (`max_instances`) |
+| Server build time | 10 minutes per build by default |
 | Runtime files | 50 MB, 5,000 files |
 
-## Build minutes
+Building on your own machine with `grey deploy` and building on the server are never counted or billed.
 
-Only builds **on Greyship** count: no Go installed, `grey deploy --remote`, and GitHub deploys. Building on your own
-machine with `grey deploy` is free and never counted. Minutes run from when the build starts on a build machine until
-its binaries are uploaded, not while it waits in the queue.
+## Limits set by your admin
 
-`grey deploy` prints the month's total after each server build:
+The admin of your Greyship can limit, per user, how much all of your running apps may use together:
+
+- **Memory** in MB
+- **CPU** in cores
+- **Builds at once**
+
+No limit set means no limit. **Usage** in the dashboard shows what your apps use now next to your limits (and the
+sidebar does when you have a memory limit).
+
+A deploy that would pass a limit fails, and the version that is live keeps running:
 
 ```text
-build: 42s · 12/100 min this month
+memory limit reached: your apps use 700 of 1024 MB and api needs 512 MB more. Ask the instance admin to raise your limit, or stop something
 ```
 
-The dashboard shows it on **Usage** and in the sidebar. When a Free team's minutes run out, server builds are refused
-until the 1st of the next month; local builds keep working.
-
-## After the beta
-
-| Plan | Price | Highlights |
-| --- | --- | --- |
-| Free | $0 | everything above |
-| Pro | $8/mo with $8 of usage included | up to 1 GB per instance, 10 instances, always-on services, 7-day logs, preview deploys, 500 build minutes |
-| Team | $25/user/mo | up to 2 GB, 50 instances, 30-day logs, 1,500 build minutes per team |
-
-You pay for running time, never for idle services. Exact usage prices are set before billing starts.
+A deploy briefly runs the old and the new version side by side, so you need some room above your apps' normal use. A
+service that wants to scale up past a limit stays at the size it has. Paused (sleeping) apps still hold their memory,
+so they count. The release command that runs your migrations doesn't.
 
 ## Sandboxing
 
-Every service runs in its own sandbox (gVisor): it can reach the internet, but never another customer's services,
+Every service runs in its own sandbox (gVisor): it can reach the internet, but never another user's services,
 Greyship's internal systems or the server itself.

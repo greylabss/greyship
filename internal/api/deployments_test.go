@@ -113,15 +113,6 @@ func (f *fakeDeployments) Redeploy(_ context.Context, c project.Caller, id strin
 	return d, err
 }
 
-func (f *fakeDeployments) TeamBuildMinutes(_ context.Context, c project.Caller, _ string) (int64, int, error) {
-	f.caller = c
-	return 312 * 60, 500, f.err
-}
-
-func (f *fakeDeployments) BuildMinutes(context.Context, string) (int64, int, error) {
-	return 312 * 60, 500, nil
-}
-
 func (f *fakeDeployments) BuildsAhead(context.Context, project.Caller, string) (int64, error) {
 	return 2, nil
 }
@@ -162,7 +153,7 @@ func TestDeploymentLogsFollow(t *testing.T) {
 	s.ServeHTTP(rec, req)
 
 	body := rec.Body.String()
-	want := []string{`"queue":{"ahead":2}`, `"line":"go: downloading chi"`, `"seq":2`, `"seq":3`, `"line":"done"`, `"end":{"status":"ready"`, `"service":"api"`, `"url":"https://api-shop.greyship.tech"`, `"build":{"seconds":42,"used_minutes":312,"included_minutes":500}`}
+	want := []string{`"queue":{"ahead":2}`, `"line":"go: downloading chi"`, `"seq":2`, `"seq":3`, `"line":"done"`, `"end":{"status":"ready"`, `"service":"api"`, `"url":"https://api-shop.greyship.tech"`, `"build":{"seconds":42}`}
 	last := -1
 	for _, w := range want {
 		i := strings.Index(body, w)
@@ -230,9 +221,6 @@ func TestDeploymentEndpoints(t *testing.T) {
 		{"redeploy a failed build", deploy.ErrNotDeployable, "POST", "/v1/deployments/d1/redeploy", "", true, http.StatusConflict, "not_deployable"},
 		{"redeploy as viewer", project.ErrReadOnly, "POST", "/v1/deployments/d1/redeploy", "", true, http.StatusForbidden, "read_only"},
 		{"redeploy another team's", deploy.ErrNotFound, "POST", "/v1/deployments/d1/redeploy", "", true, http.StatusNotFound, "not_found"},
-		{"build usage", nil, "GET", "/v1/teams/haki/usage/builds", "", true, http.StatusOK, `{"included_minutes":500,"resets_on":"`},
-		{"build usage needs auth", nil, "GET", "/v1/teams/haki/usage/builds", "", false, http.StatusUnauthorized, "unauthenticated"},
-		{"build usage of another team", project.ErrNotFound, "GET", "/v1/teams/other/usage/builds", "", true, http.StatusNotFound, "not_found"},
 		{"get missing", deploy.ErrNotFound, "GET", "/v1/deployments/nope", "", true, http.StatusNotFound, "No such deployment."},
 		{"get", nil, "GET", "/v1/deployments/d1", "", true, http.StatusOK, `"project":"shop"`},
 		{"get shows urls", nil, "GET", "/v1/deployments/d1", "", true, http.StatusOK, `"urls":[{"service":"api","url":"https://api-shop.greyship.tech"}]`},
