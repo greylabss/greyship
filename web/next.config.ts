@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // The browser only needs to know whether a real API is behind /v1; its address stays server-side.
-  env: { NEXT_PUBLIC_API_ENABLED: process.env.GREYSHIP_API_URL ? "1" : "" },
+  // Always on: this dashboard is only ever shipped with a real API behind /v1. The flag is read at build time, and the
+  // release build has no GREYSHIP_API_URL, so deriving it from that left sign-in and device approval in mock mode.
+  env: { NEXT_PUBLIC_API_ENABLED: "1" },
   devIndicators: false,
   // The installer runs the dashboard from this self-contained build (node server.js).
   output: "standalone",
