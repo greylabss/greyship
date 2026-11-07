@@ -126,22 +126,8 @@ func run(logger *slog.Logger) error {
 	}
 
 	signer := auth.Signer{Key: cfg.CookieSecret, Now: time.Now}
-	ghCfg, err := config.LoadGitHubApp(os.Getenv)
-	if err != nil {
-		return err
-	}
-	var ghDeploys api.GitHubDeploys
-	if ghCfg.ID != 0 {
-		key, err := os.ReadFile(ghCfg.KeyFile)
-		if err != nil {
-			return fmt.Errorf("read GitHub App key: %w", err)
-		}
-		app, err := github.NewApp(ghCfg.ID, ghCfg.Slug, ghCfg.ClientID, ghCfg.ClientSecret, key)
-		if err != nil {
-			return err
-		}
-		ghDeploys = &github.Service{Pool: pool, GitHub: app, Projects: projects, Signer: signer, Logger: logger}
-	}
+	githubApps := &github.Apps{Pool: pool, Keys: keyring, Now: time.Now, Logger: logger}
+	ghDeploys := &github.Service{Pool: pool, GitHub: github.Dynamic{Apps: githubApps}, Apps: githubApps, DashboardURL: cfg.DashboardURL, Projects: projects, Signer: signer, Logger: logger}
 
 	var pusher notify.Pusher
 	inbox := &notify.Inbox{Pool: pool}
@@ -181,7 +167,6 @@ func run(logger *slog.Logger) error {
 		Notifications: inbox,
 		Admin:         &admin.Service{Pool: pool},
 		PushKey:       inbox.PushKey,
-		WebhookSecret: ghCfg.WebhookSecret,
 		Signer:        auth.Signer{Key: cfg.CookieSecret, Now: time.Now},
 		DashboardURL:  cfg.DashboardURL,
 		AppsDomain:    cfg.AppsDomain,

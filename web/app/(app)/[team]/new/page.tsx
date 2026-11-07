@@ -6,27 +6,37 @@ import { Steps } from "@/components/onboarding/steps";
 import { CommandHint } from "@/components/ui/command-hint";
 import { DataSection } from "@/components/ui/data-section";
 import { SkeletonRows } from "@/components/ui/skeleton";
-import { Arrives } from "@/components/ui/arrives";
 import { GitHubImport, InstallGitHub, PublicRepoForm } from "@/components/onboarding/github-import";
+import { GitHubApp } from "@/components/team/github-app";
 import { api, liveMode } from "@/lib/api";
 import { githubState } from "@/lib/api/live";
 import { templates } from "@/lib/fixtures/project";
 
 export const metadata: Metadata = { title: "New project" };
 
-export default function NewProjectPage({ params }: PageProps<"/[team]/new">) {
+export default function NewProjectPage({ params, searchParams }: PageProps<"/[team]/new">) {
   return (
     <Suspense>
-      <Body params={params} />
+      <Body params={params} searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function Body({ params }: { params: PageProps<"/[team]/new">["params"] }) {
-  const { team } = await params;
+const appErrors: Record<string, string> = {
+  expired: "That took too long, or was started from another account. Create the app again.",
+  github_refused: "GitHub refused to create the app. Check that the name isn't taken on GitHub and try again.",
+  failed: "Greyship couldn't save the app. Try again, or ask the person running this Greyship to look at the API's log.",
+};
+
+async function Body({ params, searchParams }: { params: PageProps<"/[team]/new">["params"]; searchParams: PageProps<"/[team]/new">["searchParams"] }) {
+  const [{ team }, q] = await Promise.all([params, searchParams]);
+  const created = q.github_app === "created";
+  const failure = typeof q.github_app_error === "string" ? (appErrors[q.github_app_error] ?? "Something went wrong creating the GitHub App.") : "";
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8">
       <Steps current={0} />
+      {created && <p className="rounded-panel border border-border p-3 text-13">Your GitHub App is created. Install it on the repositories you want to deploy, then import one below.</p>}
+      {failure && <p className="text-13 text-error">{failure}</p>}
       <div className="flex flex-col gap-1">
         <h1 className="text-28 font-semibold tracking-tight">Deploy a Go backend</h1>
         <p className="text-muted">Pick a repository. You&apos;ll see its services and set env vars before deploying.</p>
@@ -70,7 +80,14 @@ async function Body({ params }: { params: PageProps<"/[team]/new">["params"] }) 
 async function Repos({ team }: { team: string }) {
   if (!liveMode) return <RepoPicker team={team} repos={await api.listRepos(team)} />;
   const gh = await githubState(team);
-  if (gh.kind === "off") return <Arrives title="Import from GitHub" when="GitHub deploys, once they're switched on for this Greyship" command="grey deploy" />;
+  if (gh.kind === "no_app") {
+    return (
+      <div className="flex flex-col gap-6">
+        <GitHubApp team={team} app={gh.app} />
+        <PublicRepoForm team={team} />
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-6">
       <PublicRepoForm team={team} />

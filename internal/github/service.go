@@ -30,14 +30,15 @@ import (
 
 // GitHub is the part of App the service uses, so tests can fake GitHub.
 type GitHub interface {
-	InstallURL(state string) string
-	ExchangeCode(ctx context.Context, code string) (string, error)
-	UserInstallations(ctx context.Context, userToken string) ([]Installation, error)
+	InstallURL(ctx context.Context, team, state string) (string, error)
+	ExchangeCode(ctx context.Context, team, code string) (string, error)
+	UserInstallations(ctx context.Context, team, userToken string) ([]Installation, error)
 	Repos(ctx context.Context, installation int64) ([]Repo, error)
 	BranchHead(ctx context.Context, installation int64, repo, branch string) (string, error)
 	PublicRefs(ctx context.Context, repo string) (string, map[string]string, error)
 	Tarball(ctx context.Context, installation int64, repo, sha string, limit int64) ([]byte, error)
 	PublicTarball(ctx context.Context, repo, sha string, limit int64) ([]byte, error)
+	SetStatus(ctx context.Context, installation int64, repo, sha, state, target, description string) error
 }
 
 // Service connects teams' GitHub installations and repos to projects, and turns pushes into deployments.
@@ -47,12 +48,16 @@ type Service struct {
 	Projects *project.Service
 	Signer   auth.Signer
 	Logger   *slog.Logger
+	// Apps and DashboardURL let a team create its own GitHub App (app.go).
+	Apps         *Apps
+	DashboardURL string
 }
 
 var (
 	ErrNotInstalled    = errors.New("the Greyship GitHub app isn't installed for this team")
 	ErrNoAccess        = errors.New("this GitHub installation isn't one you can access")
 	ErrUnknownRepo     = errors.New("that repository isn't shared with the Greyship GitHub app")
+	ErrRefused         = errors.New("GitHub refused to create the app")
 	ErrBadState        = errors.New("this GitHub link has expired or wasn't started here; try installing again")
 	ErrUnknownBranch   = errors.New("the repository has no such branch")
 	ErrAlreadyDeployed = errors.New("the latest commit is already deployed or deploying")
@@ -78,7 +83,7 @@ func (s *Service) InstallURL(ctx context.Context, c project.Caller, team string)
 	if err != nil {
 		return "", err
 	}
-	return s.GitHub.InstallURL(state), nil
+	return s.GitHub.InstallURL(ctx, t.ID, state)
 }
 
 // Callback records an installation GitHub sends back, but only if the person proves with their own GitHub
@@ -96,11 +101,11 @@ func (s *Service) Callback(ctx context.Context, c project.Caller, state, code st
 	if team.Role == "viewer" {
 		return "", project.ErrReadOnly
 	}
-	userToken, err := s.GitHub.ExchangeCode(ctx, code)
+	userToken, err := s.GitHub.ExchangeCode(ctx, team.ID, code)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrNoAccess, err)
 	}
-	theirs, err := s.GitHub.UserInstallations(ctx, userToken)
+	theirs, err := s.GitHub.UserInstallations(ctx, team.ID, userToken)
 	if err != nil {
 		return "", fmt.Errorf("list GitHub installations: %w", err)
 	}
@@ -358,7 +363,7 @@ type PushEvent struct {
 }
 
 // Push deploys every project connected to the pushed branch. A repeated delivery deploys nothing new.
-func (s *Service) Push(ctx context.Context, body []byte) (int, error) {
+func (s *Service) Push(ctx context.Context, team string, body []byte) (int, error) {
 	var ev PushEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		return 0, fmt.Errorf("decode push: %w", err)
@@ -366,6 +371,15 @@ func (s *Service) Push(ctx context.Context, body []byte) (int, error) {
 	branch, ok := strings.CutPrefix(ev.Ref, "refs/heads/")
 	if !ok || ev.Deleted || len(ev.After) != 40 {
 		return 0, nil // a tag, a deleted branch: nothing to deploy
+	}
+	// The delivery was signed with this team's webhook secret, so it speaks only for this team's installation: a
+	// push naming someone else's installation must deploy nothing.
+	inst, err := store.New(s.Pool).GetInstallation(ctx, ev.Installation.ID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && inst.TeamID != team) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
 	}
 	rows, err := store.New(s.Pool).ProjectsForPush(ctx, store.ProjectsForPushParams{RepoID: ev.Repository.ID, Branch: branch})
 	if err != nil {
@@ -420,7 +434,7 @@ func (s *Service) deploy(ctx context.Context, projectID, sha, branch string, by 
 // Fetcher downloads a pushed commit, repacks it like grey deploy would and hands it to the builder.
 type Fetcher struct {
 	Pool    *pgxpool.Pool
-	App     *App
+	App     GitHub
 	Storage interface {
 		Put(ctx context.Context, key string, body io.Reader, size int64) error
 	}
@@ -506,7 +520,7 @@ func (f *Fetcher) retry(ctx context.Context, q *store.Queries, id string, job bu
 // a link to the deployment. It is a sweep, so a failed post is simply tried again.
 type Statuses struct {
 	Pool      *pgxpool.Pool
-	App       *App
+	App       GitHub
 	Dashboard string
 	Logger    *slog.Logger
 }

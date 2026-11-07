@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ChangePassword } from "@/components/team/change-password";
+import { GitHubApp } from "@/components/team/github-app";
 import { NotificationSettings } from "@/components/team/notification-settings";
 import { RevokeToken } from "@/components/team/revoke-token";
 import { TokenDialog } from "@/components/team/token-dialog";
@@ -10,6 +11,7 @@ import { PageHeader, SectionHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, Td, Th } from "@/components/ui/table";
 import { api, liveMode } from "@/lib/api";
+import { githubApp } from "@/lib/api/live";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -27,6 +29,16 @@ export default function SettingsPage({ params }: PageProps<"/[team]/settings">) 
           <SectionHeader title="Notifications" />
           <p className="text-13 text-muted">For deploys you start and projects you create.</p>
           <NotificationSettings />
+        </section>
+      )}
+
+      {liveMode && (
+        <section className="flex flex-col gap-3">
+          <SectionHeader title="GitHub" />
+          <p className="text-13 text-muted">Your own GitHub App: it lets Greyship read the repositories you pick and deploy them on every push.</p>
+          <DataSection what="github" fallback={<Skeleton className="h-40 w-full rounded-panel" />}>
+            <GitHub team={team} />
+          </DataSection>
         </section>
       )}
 
@@ -124,4 +136,9 @@ async function Tokens() {
             </tbody>
           </Table>
   );
+}
+
+async function GitHub({ team: teamSlug }: { team: Promise<string> }) {
+  const team = await teamSlug;
+  return <GitHubApp team={team} app={await githubApp(team)} />;
 }

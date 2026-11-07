@@ -92,8 +92,8 @@ func ParseKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 }
 
 // InstallURL is where a person installs the app; GitHub hands state back to the callback.
-func (a *App) InstallURL(state string) string {
-	return strings.TrimRight(a.Web, "/") + "/apps/" + url.PathEscape(a.Slug) + "/installations/new?state=" + url.QueryEscape(state)
+func (a *App) InstallURL(_ context.Context, _, state string) (string, error) {
+	return strings.TrimRight(a.Web, "/") + "/apps/" + url.PathEscape(a.Slug) + "/installations/new?state=" + url.QueryEscape(state), nil
 }
 
 // jwt is the app's own short-lived credential, used only to mint installation tokens.
@@ -145,7 +145,7 @@ func (a *App) InstallationToken(ctx context.Context, installation int64) (string
 
 // ExchangeCode turns the code from the install callback into a user token, used once to list what that user
 // can access.
-func (a *App) ExchangeCode(ctx context.Context, code string) (string, error) {
+func (a *App) ExchangeCode(ctx context.Context, _, code string) (string, error) {
 	form := url.Values{"client_id": {a.ClientID}, "client_secret": {a.ClientSecret}, "code": {code}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.Web, "/")+"/login/oauth/access_token", strings.NewReader(form.Encode()))
 	if err != nil {
@@ -172,7 +172,7 @@ func (a *App) ExchangeCode(ctx context.Context, code string) (string, error) {
 }
 
 // UserInstallations lists the app's installations a user can access.
-func (a *App) UserInstallations(ctx context.Context, userToken string) ([]Installation, error) {
+func (a *App) UserInstallations(ctx context.Context, _, userToken string) ([]Installation, error) {
 	var all []Installation
 	for page := 1; page <= 10; page++ {
 		var out struct {

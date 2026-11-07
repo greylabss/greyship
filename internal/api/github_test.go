@@ -17,9 +17,64 @@ import (
 )
 
 type fakeGitHub struct {
-	pushes    int
-	callbacks int
-	err       error
+	pushes     int
+	pushedFor  string
+	callbacks  int
+	err        error
+	configured bool     // the team has an app
+	teams      []string // teams whose app was asked for
+	finishErr  error
+	started    []string
+	deleted    []string
+}
+
+func (f *fakeGitHub) AppStatus(_ context.Context, _ project.Caller, team string) (github.AppInfo, error) {
+	if f.err != nil {
+		return github.AppInfo{}, f.err
+	}
+	st := github.Status{}
+	if f.configured {
+		st = github.Status{Configured: true, Slug: "greyship-haki", Name: "Greyship haki", HTMLURL: "https://github.com/apps/greyship-haki"}
+	}
+	return github.AppInfo{Status: st, TeamID: "t1", WebhookURL: "http://dash.test/v1/github/webhook/t1", DefaultName: "Greyship " + team}, nil
+}
+
+func (f *fakeGitHub) StartApp(_ context.Context, c project.Caller, team, org, name string) (github.AppStart, error) {
+	if f.err != nil {
+		return github.AppStart{}, f.err
+	}
+	if org == "../evil" || name == "<script>" {
+		return github.AppStart{}, github.ErrBadInput
+	}
+	f.started = append(f.started, c.UserID+"/"+team)
+	return github.AppStart{Action: "https://github.com/settings/apps/new?state=s", Manifest: github.Manifest("http://dash.test", "Greyship "+team, "t1")}, nil
+}
+
+func (f *fakeGitHub) FinishApp(_ context.Context, c project.Caller, state, code string) (string, error) {
+	if f.finishErr != nil {
+		return "haki", f.finishErr
+	}
+	if state != "good-state" || code == "" {
+		return "", github.ErrBadState
+	}
+	f.configured = true
+	return "haki", nil
+}
+
+func (f *fakeGitHub) DeleteApp(_ context.Context, _ project.Caller, team string) error {
+	f.deleted = append(f.deleted, team)
+	return f.err
+}
+
+func (f *fakeGitHub) WebhookSecret(_ context.Context, team string) (string, error) {
+	f.teams = append(f.teams, team)
+	if !f.configured && team != "t1" {
+		return "", github.ErrOff
+	}
+	if team == "t1" {
+		return "whsec", nil
+	}
+	return "", github.ErrOff
 }
 
 func (f *fakeGitHub) InstallURL(context.Context, project.Caller, string) (string, error) {
@@ -68,15 +123,16 @@ func (f *fakeGitHub) DeployLatest(context.Context, project.Caller, string) (stri
 	return "d3", f.err
 }
 
-func (f *fakeGitHub) Push(context.Context, []byte) (int, error) {
+func (f *fakeGitHub) Push(_ context.Context, team string, _ []byte) (int, error) {
 	f.pushes++
+	f.pushedFor = team
 	return 1, nil
 }
 
-// githubServer is a test server with GitHub deploys on; their routes only exist when the app is configured.
+// githubServer is a test server with GitHub deploys on.
 func githubServer(fa *fakeAuth, gh *fakeGitHub) *Server {
 	o := newTestServer(fa).Options
-	o.GitHub, o.WebhookSecret = gh, "whsec"
+	o.GitHub = gh
 	return New(o)
 }
 
@@ -101,7 +157,7 @@ func TestGitHubWebhook(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			gh := &fakeGitHub{}
 			s := githubServer(&fakeAuth{}, gh)
-			req := httptest.NewRequest("POST", "/v1/github/webhook", strings.NewReader(body))
+			req := httptest.NewRequest("POST", "/v1/github/webhook/t1", strings.NewReader(body))
 			req.Header.Set("X-GitHub-Event", tt.event)
 			req.Header.Set("X-Hub-Signature-256", tt.signature)
 			rec := httptest.NewRecorder()
@@ -109,7 +165,34 @@ func TestGitHubWebhook(t *testing.T) {
 			if rec.Code != tt.want || gh.pushes != tt.pushes {
 				t.Fatalf("webhook = %d (pushes %d), want %d (%d)", rec.Code, gh.pushes, tt.want, tt.pushes)
 			}
+			if tt.pushes == 1 && gh.pushedFor != "t1" {
+				t.Fatalf("the push was handed to team %q; it must be the team in the URL", gh.pushedFor)
+			}
 		})
+	}
+}
+
+// Each team's app has its own webhook address and secret: a delivery for a team without an app, or signed with
+// another team's secret, does nothing.
+func TestGitHubWebhookIsPerTeam(t *testing.T) {
+	body := `{"ref":"refs/heads/main"}`
+	gh := &fakeGitHub{}
+	s := githubServer(&fakeAuth{}, gh)
+	for name, tc := range map[string]struct {
+		path, sig string
+		want      int
+	}{
+		"team without an app":   {"/v1/github/webhook/other", sign("whsec", body), http.StatusNotFound},
+		"another team's secret": {"/v1/github/webhook/t1", sign("their-secret", body), http.StatusUnauthorized},
+	} {
+		req := httptest.NewRequest("POST", tc.path, strings.NewReader(body))
+		req.Header.Set("X-GitHub-Event", "push")
+		req.Header.Set("X-Hub-Signature-256", tc.sig)
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		if rec.Code != tc.want || gh.pushes != 0 {
+			t.Errorf("%s: %d (pushes %d), want %d", name, rec.Code, gh.pushes, tc.want)
+		}
 	}
 }
 

@@ -111,6 +111,7 @@ func Load(getenv func(string) string) (Config, error) {
 
 // Builder is greyship-builder's configuration.
 type Builder struct {
+	MasterKey   string // opens the GitHub App credentials stored in the database
 	DatabaseURL string
 	Storage     Storage
 	Docker      string
@@ -147,6 +148,7 @@ func LoadBuilder(getenv func(string) string) (Builder, error) {
 	get := getter(getenv)
 	dev := get("ENV", "production") == "development"
 	b := Builder{
+		MasterKey:   get("MASTER_KEY", devOrValue(dev, devMasterKey, "")),
 		DatabaseURL: get("DATABASE_URL", ""),
 		Storage:     loadStorage(get, dev),
 		Docker:      get("BUILD_DOCKER", "docker"),
@@ -181,6 +183,9 @@ func LoadBuilder(getenv func(string) string) (Builder, error) {
 	}
 	if b.DatabaseURL == "" {
 		errs = append(errs, errors.New("GREYSHIP_DATABASE_URL is required"))
+	}
+	if b.MasterKey == "" {
+		errs = append(errs, errors.New("GREYSHIP_MASTER_KEY is required"))
 	}
 	if b.Timeout, err = time.ParseDuration(get("BUILD_TIMEOUT", "10m")); err != nil || b.Timeout <= 0 {
 		errs = append(errs, errors.New("GREYSHIP_BUILD_TIMEOUT must be a duration such as 10m"))
@@ -368,41 +373,4 @@ func LoadBackup(getenv func(string) string) (Storage, error) {
 	get := getter(getenv)
 	s := loadStorage(get, get("ENV", "production") == "development")
 	return s, errors.Join(s.check()...)
-}
-
-// GitHubApp is the Greyship GitHub App (decisions.md 042). Empty ID means GitHub deploys are off.
-type GitHubApp struct {
-	ID            int64
-	Slug          string
-	ClientID      string
-	ClientSecret  string
-	KeyFile       string
-	WebhookSecret string
-}
-
-// LoadGitHubApp reads GREYSHIP_GITHUB_APP_* and GREYSHIP_GITHUB_WEBHOOK_SECRET; the API and builder share them.
-func LoadGitHubApp(getenv func(string) string) (GitHubApp, error) {
-	get := getter(getenv)
-	raw := get("GITHUB_APP_ID", "")
-	if raw == "" {
-		return GitHubApp{}, nil
-	}
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || id <= 0 {
-		return GitHubApp{}, errors.New("GREYSHIP_GITHUB_APP_ID must be the app's number")
-	}
-	a := GitHubApp{
-		ID: id, Slug: get("GITHUB_APP_SLUG", ""), ClientID: get("GITHUB_APP_CLIENT_ID", ""), ClientSecret: get("GITHUB_APP_CLIENT_SECRET", ""),
-		KeyFile: get("GITHUB_APP_PRIVATE_KEY_FILE", ""), WebhookSecret: get("GITHUB_WEBHOOK_SECRET", ""),
-	}
-	var errs []error
-	for name, v := range map[string]string{
-		"GREYSHIP_GITHUB_APP_SLUG": a.Slug, "GREYSHIP_GITHUB_APP_CLIENT_ID": a.ClientID, "GREYSHIP_GITHUB_APP_CLIENT_SECRET": a.ClientSecret,
-		"GREYSHIP_GITHUB_APP_PRIVATE_KEY_FILE": a.KeyFile, "GREYSHIP_GITHUB_WEBHOOK_SECRET": a.WebhookSecret,
-	} {
-		if v == "" {
-			errs = append(errs, fmt.Errorf("%s is required with GREYSHIP_GITHUB_APP_ID", name))
-		}
-	}
-	return a, errors.Join(errs...)
 }

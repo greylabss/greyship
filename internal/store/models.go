@@ -128,6 +128,20 @@ type EnvVar struct {
 	UpdatedAt  time.Time
 }
 
+type GithubApp struct {
+	TeamID           string
+	AppID            int64
+	Slug             string
+	Name             string
+	HtmlUrl          string
+	ClientID         string
+	ClientSecretEnc  []byte
+	PrivateKeyEnc    []byte
+	WebhookSecretEnc []byte
+	CreatedBy        *string
+	CreatedAt        time.Time
+}
+
 type GithubInstallation struct {
 	ID           int64
 	TeamID       string

@@ -55,7 +55,7 @@ Uploaded 3 binaries (7.8 MB)
   whether it serves HTTP, so a normal project needs no config at all.
 - **Build where you like.** On your laptop (only changed binaries are uploaded), or on the server inside gVisor, so
   you don't even need Go installed to deploy.
-- **Deploy from GitHub.** Paste a public repository's link, or install the GitHub App for push-to-deploy. Review the
+- **Deploy from GitHub.** Paste a public repository's link, or create the GitHub App with one click in the dashboard for push-to-deploy. Review the
   services Greyship found and set env vars before the first deploy.
 - **Never break production.** A new version must pass its health check before it gets traffic. If anything fails,
   nothing changes and the live version keeps serving. Roll back to any earlier deployment in seconds, with no rebuild.
@@ -125,7 +125,7 @@ another instance we run; we add each tester as a user ([apply here](https://form
 notifications, the admin view, and the installer.
 
 **Coming next:** workers that wake on events and crons that run on schedule, custom domains from the dashboard, a guided
-GitHub App setup, SMTP email, metrics, multiple servers, and Firecracker microVMs for faster cold starts. See
+SMTP email, metrics, multiple servers, and Firecracker microVMs for faster cold starts. See
 [`docs/spec.md`](docs/spec.md).
 
 ## Build from source

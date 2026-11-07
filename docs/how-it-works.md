@@ -278,6 +278,8 @@ The CLI is in [`internal/cli`](../internal/cli); `cmd/greyship/main.go` just run
 
 ## 2.8 GitHub deploys (`internal/github`)
 
+- **Creating the app** ([`manifest.go`](../internal/github/manifest.go), [`app.go`](../internal/github/app.go), [`apps.go`](../internal/github/apps.go), [`internal/api/githubapp.go`](../internal/api/githubapp.go)): every team makes its own. A person presses a button; the API hands back GitHub's "register an app" form data (the manifest) with a signed note saying who started it and for which team. Their browser sends it to GitHub, they confirm, and GitHub sends them back with a one-time code. The API checks the note, trades the code for the app's secrets, encrypts them with the instance's master key and keeps them in the `github_apps` table, one row per team. When something needs GitHub, `Dynamic` looks up which team's app to use (through the installation), so teams never use each other's apps, and each team's pushes arrive at their own webhook address signed with their own secret.
+
 - [`github.go`](../internal/github/github.go) is the GitHub client:
   - `jwt()` signs a 9-minute token with the app's private key (RS256);
   - `InstallationToken` trades it for a 1-hour token for one installation, cached in memory;

@@ -101,6 +101,17 @@ grey deploy
 `grey` remembers the server, so every later command talks to it. `grey whoami` shows which one. To use another Greyship
 again, run `grey login <its address>`.
 
+## Connecting GitHub
+
+Everyone connects their own GitHub, with their own GitHub App, so nobody needs the server's admin for it. In the
+dashboard, open **New project** (or **Settings → GitHub**) and press **Create GitHub App**. You can name it and give
+an organisation to own it. You confirm on GitHub and come straight back; Greyship stores the app's keys encrypted. Then
+install the app on the repositories you want from **New project → Import from GitHub**.
+
+GitHub can only tell Greyship about pushes if the dashboard's address is reachable from the internet. On a private or
+`localhost` address the page warns you: importing and **Deploy latest** still work, but pushes won't deploy by
+themselves. Add a domain (above) for push-to-deploy.
+
 ## Turning on email
 
 Email is optional and only sends **deploy notifications** (a deploy succeeded or failed, a project was created).
@@ -175,8 +186,7 @@ redeploying: any project can be deployed again from its source.
 - **No plans, no billing.** Everyone on the instance can build and run as much as the server allows, unless you limit them.
 - **Builds run on your server** inside gVisor. (Greyship can also build on [Fly.io](https://fly.io) machines; that is an
   advanced setting.)
-- **GitHub push-to-deploy** needs a GitHub App of your own. Importing a *public* repository by link works out of the box;
-  a guided setup for the app is coming soon.
+- **GitHub** is connected by each person with one click (see below). Importing a *public* repository by link works without it.
 
 ## Uninstall
 

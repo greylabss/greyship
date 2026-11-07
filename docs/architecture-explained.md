@@ -109,6 +109,9 @@ The receptionist counts how many visitors each robot is handling. When one robot
 ### Who gets a key? (accounts and passwords)
 Think of Greyship as a building. The first person to walk into a brand-new building gets to choose their own email and password, and becomes the owner with the master key. After that nobody can sign themselves up. The owner cuts a key for each person: an email, a name and a password, and says whether it is a master key or a normal one. The owner can also say how much room that person may use (how much memory, how much processor, how many builds at once). We never keep the password itself, only a scrambled fingerprint of it. If someone guesses wrong too many times in a row, the door stays shut for a few minutes. If someone forgets their password, nobody sends an email: the owner walks to the server room (SSH into the server) and runs one command that makes a new password. At least one master key always exists.
 
+### How does Greyship talk to GitHub?
+GitHub only lets a program look at your code if it has an official badge, called a GitHub App. Greyship makes a badge for each person: you press one button, confirm on GitHub, and GitHub hands Greyship your own badge and its secret keys. Greyship locks them in the safe (encrypted). Then you tell GitHub which of your repositories your badge may read, and Greyship can fetch your code and deploy it whenever you push. Nobody else's badge can touch your repositories, and yours can't touch theirs.
+
 ### How does Greyship send email?
 Greyship doesn't run its own post office. It hires one called Resend. The owner gives Greyship the Resend key (like a membership card) and the street address it should send from (the domain) on the Email page. Greyship locks the card in a safe (encrypted) and takes it out only when it needs to post a letter. With no card, no letters go out; sign-in codes are left in a drawer on the server instead.
 

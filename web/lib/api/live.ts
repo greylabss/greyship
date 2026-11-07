@@ -212,7 +212,13 @@ export type GitHubRepo = { full_name: string; default_branch: string; private: b
 
 // The team's GitHub state for the import screen: its repos, or that the app isn't installed (with the link to do
 // so), or that GitHub deploys aren't set up on this Greyship at all.
-export type GitHubState = { kind: "repos"; repos: GitHubRepo[]; installURL: string } | { kind: "install"; installURL: string } | { kind: "off" };
+export type GitHubAppStatus = { configured: boolean; name: string; slug: string; html_url: string; webhook_url: string; default_name: string; warnings: string[] };
+
+// kind "no_app": the team hasn't created its own GitHub App yet (decisions.md 055); it can still import a public repository by link.
+export type GitHubState =
+  | { kind: "repos"; repos: GitHubRepo[]; installURL: string }
+  | { kind: "install"; installURL: string }
+  | { kind: "no_app"; app: GitHubAppStatus };
 
 export type GitHubPreview = {
   branch: string;
@@ -230,13 +236,18 @@ export async function githubPreview(projectId: string): Promise<GitHubPreview> {
   return json<GitHubPreview>(`/v1/projects/${projectId}/github/preview`);
 }
 
+// githubApp is the team's own GitHub App: whether it exists, and what the create button needs.
+export async function githubApp(team: string): Promise<GitHubAppStatus> {
+  return json<GitHubAppStatus>(`/v1/teams/${encodeURIComponent(team)}/github/app`);
+}
+
 export async function githubState(team: string): Promise<GitHubState> {
   const t = encodeURIComponent(team);
   let installURL: string;
   try {
     installURL = (await json<{ url: string }>(`/v1/teams/${t}/github/install`)).url;
   } catch (e) {
-    if (e instanceof ApiError && e.status === 404) return { kind: "off" };
+    if (e instanceof ApiError && e.status === 404) return { kind: "no_app", app: await githubApp(team) };
     throw e;
   }
   try {

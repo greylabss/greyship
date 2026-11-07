@@ -47,15 +47,13 @@ type Options struct {
 	Accounts      Accounts
 	Mail          MailSettings
 	// PushKey is the VAPID public key for browser push; empty when push isn't configured.
-	PushKey string
-	// WebhookSecret checks GitHub's deliveries (GREYSHIP_GITHUB_WEBHOOK_SECRET).
-	WebhookSecret string
-	Signer        auth.Signer
-	DashboardURL  string
-	AppsDomain    string // services are served at <label>.<AppsDomain> (F-50)
-	AppsPort      string // HTTPS port shown in URLs; empty for 443
-	BuildGOARCH   string // CPU the runtime nodes run; local builds target it
-	SecureCookie  bool
+	PushKey      string
+	Signer       auth.Signer
+	DashboardURL string
+	AppsDomain   string // services are served at <label>.<AppsDomain> (F-50)
+	AppsPort     string // HTTPS port shown in URLs; empty for 443
+	BuildGOARCH  string // CPU the runtime nodes run; local builds target it
+	SecureCookie bool
 	// HTTPOnly: the instance has no TLS yet, so app URLs are http:// (decisions.md 050).
 	HTTPOnly bool
 	// ProxySecret is shared with the dashboard, which serves /v1 on its own origin and passes the browser's
@@ -126,10 +124,14 @@ func New(o Options) *Server {
 	s.mux.Handle("PATCH /v1/projects/{id}", s.requireUser(http.HandlerFunc(s.renameProject)))
 
 	// Build machines authenticate with a per-build token, not a user (decisions.md 039).
-	// GitHub deploys exist only once the GitHub App is configured (GREYSHIP_GITHUB_APP_*).
+	// Each team creates its own GitHub App (decisions.md 055); until it has, these answer 404 github_off.
 	if s.GitHub != nil {
-		s.mux.HandleFunc("POST /v1/github/webhook", s.githubWebhook)
+		s.mux.HandleFunc("POST /v1/github/webhook/{team}", s.githubWebhook)
 		s.mux.HandleFunc("GET /v1/github/callback", s.githubCallback)
+		s.mux.Handle("GET /v1/github/manifest/callback", s.requireUser(http.HandlerFunc(s.githubManifestCallback)))
+		s.mux.Handle("GET /v1/teams/{team}/github/app", s.requireUser(http.HandlerFunc(s.githubApp)))
+		s.mux.Handle("POST /v1/teams/{team}/github/app/manifest", s.requireUser(http.HandlerFunc(s.githubAppManifest)))
+		s.mux.Handle("DELETE /v1/teams/{team}/github/app", s.requireUser(http.HandlerFunc(s.githubAppDelete)))
 		s.mux.Handle("GET /v1/teams/{team}/github/install", s.requireUser(http.HandlerFunc(s.githubInstall)))
 		s.mux.Handle("GET /v1/teams/{team}/github/repos", s.requireUser(http.HandlerFunc(s.githubRepos)))
 		s.mux.Handle("POST /v1/teams/{team}/github/import", s.requireUser(http.HandlerFunc(s.githubImport)))

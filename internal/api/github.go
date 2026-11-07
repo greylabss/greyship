@@ -23,7 +23,12 @@ type GitHubDeploys interface {
 	Import(ctx context.Context, c project.Caller, team, repo, branch string, deploy bool) (project.Project, string, error)
 	Connect(ctx context.Context, c project.Caller, projectID, repo, branch string) (store.ProjectRepo, error)
 	Repo(ctx context.Context, c project.Caller, projectID string) (store.ProjectRepo, error)
-	Push(ctx context.Context, body []byte) (int, error)
+	Push(ctx context.Context, team string, body []byte) (int, error)
+	AppStatus(ctx context.Context, c project.Caller, team string) (github.AppInfo, error)
+	StartApp(ctx context.Context, c project.Caller, team, org, name string) (github.AppStart, error)
+	FinishApp(ctx context.Context, c project.Caller, state, code string) (string, error)
+	DeleteApp(ctx context.Context, c project.Caller, team string) error
+	WebhookSecret(ctx context.Context, team string) (string, error)
 	ImportPublic(ctx context.Context, c project.Caller, team, link, branch string, deploy bool) (project.Project, string, error)
 	DeployLatest(ctx context.Context, c project.Caller, projectID string) (string, error)
 	Preview(ctx context.Context, c project.Caller, projectID string) (github.Preview, error)
@@ -220,7 +225,17 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_body", "Couldn't read the delivery.")
 		return
 	}
-	if !github.ValidSignature(s.WebhookSecret, body, r.Header.Get("X-Hub-Signature-256")) {
+	team := r.PathValue("team")
+	secret, err := s.GitHub.WebhookSecret(r.Context(), team)
+	if errors.Is(err, github.ErrOff) {
+		writeError(w, http.StatusNotFound, "github_off", "This team has no GitHub App yet.")
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, err)
+		return
+	}
+	if !github.ValidSignature(secret, body, r.Header.Get("X-Hub-Signature-256")) {
 		writeError(w, http.StatusUnauthorized, "invalid_signature", "The delivery isn't signed with the webhook secret.")
 		return
 	}
@@ -228,7 +243,7 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	n, err := s.GitHub.Push(r.Context(), body)
+	n, err := s.GitHub.Push(r.Context(), team, body)
 	if err != nil {
 		s.internalError(w, r, err)
 		return
@@ -238,6 +253,8 @@ func (s *Server) githubWebhook(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) githubError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, github.ErrOff):
+		writeError(w, http.StatusNotFound, "github_off", "Create your GitHub App first: it is a button on New project and in Settings.")
 	case errors.Is(err, github.ErrNotInstalled):
 		writeError(w, http.StatusConflict, "github_not_installed", "Install the Greyship GitHub app for this team first.")
 	case errors.Is(err, github.ErrUnknownRepo):

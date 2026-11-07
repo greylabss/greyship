@@ -84,12 +84,11 @@ MSG
 		$compose exec -T postgres pg_restore -U greyship -d greyship --clean --if-exists --no-owner <"$work/db.dump" || echo "(pg_restore reported warnings above; usually harmless)"
 		# Secrets that the database's contents depend on come from the backup; infrastructure settings (database,
 		# storage keys, node) stay as this server's installer wrote them.
-		for key in GREYSHIP_MASTER_KEY GREYSHIP_COOKIE_SECRET GREYSHIP_PROXY_SECRET GREYSHIP_VAPID_PRIVATE_KEY GREYSHIP_OWNER_EMAIL GREYSHIP_RESEND_API_KEY GREYSHIP_MAIL_FROM GREYSHIP_NOTIFY_FROM GREYSHIP_GITHUB_APP_ID GREYSHIP_GITHUB_APP_SLUG GREYSHIP_GITHUB_APP_CLIENT_ID GREYSHIP_GITHUB_APP_CLIENT_SECRET GREYSHIP_GITHUB_APP_PRIVATE_KEY_FILE GREYSHIP_GITHUB_WEBHOOK_SECRET; do
+		for key in GREYSHIP_MASTER_KEY GREYSHIP_COOKIE_SECRET GREYSHIP_PROXY_SECRET GREYSHIP_VAPID_PRIVATE_KEY GREYSHIP_OWNER_EMAIL GREYSHIP_RESEND_API_KEY GREYSHIP_MAIL_FROM GREYSHIP_NOTIFY_FROM; do
 			val=$(sed -n "s|^$key=||p" "$work/etc/greyship.env" | head -1)
 			[ -n "$val" ] || continue
 			if grep -q "^$key=" "$env"; then sed -i "s|^$key=.*|$key=$(printf '%s' "$val" | sed 's/[&|]/\\&/g')|" "$env"; else echo "$key=$val" >>"$env"; fi
 		done
-		if [ -f "$work/etc/github-app.pem" ]; then install -m 0640 -o root -g greyship "$work/etc/github-app.pem" /etc/greyship/github-app.pem; fi
 		systemd-run --quiet --wait --pipe --collect -p User=greyship -p EnvironmentFile="$env" /usr/local/lib/greyship/greyship-migrate
 		for s in $services; do systemctl start "greyship-$s"; done
 		cat <<MSG

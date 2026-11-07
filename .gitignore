@@ -1,5 +1,10 @@
 # Go
 /bin/
+# Binaries that `go build ./cmd/...` leaves in the repo root
+/greyship-*
+/grey
+/gray
+/greyship
 /tmp/
 *.test
 coverage.out

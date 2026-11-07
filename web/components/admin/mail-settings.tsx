@@ -61,7 +61,7 @@ export function MailSettings({ initial }: { initial: AdminMail }) {
       <label className="flex items-start gap-2.5 text-13 text-muted">
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="mt-0.5 size-4 accent-[var(--gs-text)]" />
         <span>
-          <span className="text-fg">Send email</span>: login codes and deploy notifications.
+          <span className="text-fg">Send email</span>: deploy notifications.
         </span>
       </label>
       <Field label="Resend API key" hint={keySet ? "A key is saved. Leave empty to keep it, or paste a new one." : "Starts with re_. Stored encrypted; never shown again."}>

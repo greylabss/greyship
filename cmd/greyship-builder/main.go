@@ -25,6 +25,7 @@ import (
 	"greyship.tech/internal/github"
 	"greyship.tech/internal/objstore"
 	"greyship.tech/internal/project"
+	"greyship.tech/internal/secrets"
 )
 
 func main() {
@@ -135,9 +136,11 @@ func run(logger *slog.Logger) error {
 	for _, w := range workers {
 		g.Go(func() error { return w.Run(gctx, builder.Handle) })
 	}
-	if err := runGitHub(gctx, g, pool, storage, logger); err != nil {
+	keys, err := secrets.NewKeyring(cfg.MasterKey)
+	if err != nil {
 		return err
 	}
+	runGitHub(gctx, g, pool, storage, keys, logger)
 	// Checking binaries built on developers' machines is quick and never waits behind a compile.
 	verifier := &bus.Worker{
 		Queue: bus.NewQueue(pool), Pool: pool, ID: bus.WorkerID(), Kind: bus.BuildVerify,
@@ -161,28 +164,16 @@ func requireRunsc(ctx context.Context, docker, host string) error {
 	return nil
 }
 
-// runGitHub starts the GitHub side of deploys when the GitHub App is configured: fetching pushed commits and
-// keeping their commit statuses up to date (decisions.md 042).
-func runGitHub(ctx context.Context, g *errgroup.Group, pool *pgxpool.Pool, storage *objstore.Store, logger *slog.Logger) error {
-	ghCfg, err := config.LoadGitHubApp(os.Getenv)
-	if err != nil || ghCfg.ID == 0 {
-		return err
-	}
-	key, err := os.ReadFile(ghCfg.KeyFile)
-	if err != nil {
-		return fmt.Errorf("read GitHub App key: %w", err)
-	}
-	app, err := github.NewApp(ghCfg.ID, ghCfg.Slug, ghCfg.ClientID, ghCfg.ClientSecret, key)
-	if err != nil {
-		return err
-	}
+// runGitHub starts the GitHub side of deploys: fetching pushed commits and keeping their commit statuses up to
+// date (decisions.md 042). The app is read from the database on each use, so it works as soon as the admin creates it.
+func runGitHub(ctx context.Context, g *errgroup.Group, pool *pgxpool.Pool, storage *objstore.Store, keys *secrets.Keyring, logger *slog.Logger) {
+	apps := github.Dynamic{Apps: &github.Apps{Pool: pool, Keys: keys, Now: time.Now, Logger: logger}}
 	deploys := deploy.NewService(pool, project.NewService(pool), storage, logger, time.Now)
-	fetcher := &github.Fetcher{Pool: pool, App: app, Storage: storage, Deploy: deploys, Logger: logger}
+	fetcher := &github.Fetcher{Pool: pool, App: apps, Storage: storage, Deploy: deploys, Logger: logger}
 	worker := &bus.Worker{Queue: bus.NewQueue(pool), Pool: pool, ID: bus.WorkerID(), Kind: github.FetchJob, Lease: 2 * time.Minute, Poll: 5 * time.Second, Logger: logger}
-	statuses := &github.Statuses{Pool: pool, App: app, Dashboard: getenvOr("GREYSHIP_DASHBOARD_URL", "https://greyship.tech"), Logger: logger}
+	statuses := &github.Statuses{Pool: pool, App: apps, Dashboard: getenvOr("GREYSHIP_DASHBOARD_URL", "https://greyship.tech"), Logger: logger}
 	g.Go(func() error { return worker.Run(ctx, fetcher.Handle) })
 	g.Go(func() error { statuses.Run(ctx, 5*time.Second); return nil })
-	return nil
 }
 
 func getenvOr(key, fallback string) string {

@@ -196,7 +196,7 @@ func TestGitHubDeployFlow(t *testing.T) {
 	// A repeated push of the same commit deploys nothing; a new commit deploys once; the wrong installation, never.
 	push := func(sha string, installation int64) int {
 		body := fmt.Sprintf(`{"ref":"refs/heads/main","after":%q,"repository":{"id":100},"installation":{"id":%d}}`, sha, installation)
-		n, err := svc.Push(ctx, []byte(body))
+		n, err := svc.Push(ctx, team.ID, []byte(body))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -207,6 +207,11 @@ func TestGitHubDeployFlow(t *testing.T) {
 	}
 	if n := push(strings.Repeat("2", 40), 8); n != 0 {
 		t.Fatal("a push signed for another installation must not deploy this project")
+	}
+	// A delivery signed for another team's app can't name this team's installation either.
+	body := fmt.Sprintf(`{"ref":"refs/heads/main","after":%q,"repository":{"id":100},"installation":{"id":7}}`, strings.Repeat("4", 40))
+	if n, err := svc.Push(ctx, other.ID, []byte(body)); err != nil || n != 0 {
+		t.Fatalf("a push through another team's webhook deployed %d (%v), want 0", n, err)
 	}
 	if n := push(strings.Repeat("2", 40), 7); n != 1 {
 		t.Fatalf("new commit deployed %d, want 1", n)
@@ -305,7 +310,7 @@ func TestPublicRepoFlow(t *testing.T) {
 	}
 
 	// Pushes to a public repo never deploy: only the app's webhooks speak for a repository.
-	if n, err := svc.Push(ctx, []byte(`{"ref":"refs/heads/main","after":"`+strings.Repeat("3", 40)+`","repository":{"id":0},"installation":{"id":0}}`)); err != nil || n != 0 {
+	if n, err := svc.Push(ctx, team.ID, []byte(`{"ref":"refs/heads/main","after":"`+strings.Repeat("3", 40)+`","repository":{"id":0},"installation":{"id":0}}`)); err != nil || n != 0 {
 		t.Fatalf("push to a public repo deployed %d (%v)", n, err)
 	}
 
