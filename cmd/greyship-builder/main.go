@@ -50,7 +50,9 @@ func run(logger *slog.Logger) error {
 			return err
 		}
 	}
-	workerCount := cfg.Concurrency
+	// One build at a time on an instance: they queue, and each may use every core. Fly builds run on their own
+	// machines, so one worker per possible machine just waits for them.
+	workerCount := 1
 	if cfg.Runner == "fly" {
 		workerCount = int(cfg.Fly.MaxMachines)
 	}
@@ -77,7 +79,7 @@ func run(logger *slog.Logger) error {
 	}
 	sandbox := &build.Sandbox{
 		Docker: cfg.Docker, Host: cfg.DockerHost, Network: cfg.Network, Proxy: cfg.ProxyURL, ProxyHost: cfg.ProxyHost, Timeout: cfg.Timeout,
-		CPUs: cfg.CPUs, MemoryMB: cfg.MemoryMB,
+		MemoryMB: cfg.MemoryMB,
 	}
 	var runner build.Runner = &build.LocalRunner{Compiler: sandbox, Storage: storage, Now: time.Now}
 	concurrency := workerCount
@@ -102,8 +104,8 @@ func run(logger *slog.Logger) error {
 		Logger:    logger,
 		Now:       time.Now,
 	}
-	// cfg.Concurrency builds at a time, each within its CPU and memory caps (architecture §7). The queue lets
-	// each team have one build running, so a burst from one team doesn't hold everyone else up.
+	// Builds queue and run one at a time on an instance (decisions.md 058); the queue also lets each team have one
+	// running at most, so a burst from one team doesn't hold everyone else up.
 	workers := make([]*bus.Worker, concurrency)
 	for i := range workers {
 		workers[i] = &bus.Worker{

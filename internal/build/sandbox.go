@@ -32,9 +32,8 @@ type Sandbox struct {
 	// ProxyHost maps the proxy's name to its address ("modproxy:172.30.0.2"): Docker's DNS doesn't work under gVisor.
 	ProxyHost string
 	Timeout   time.Duration
-	// CPUs and MemoryMB cap one build. Builds run one at a time per builder, so they can use most of the
-	// machine's spare CPU; the memory budget sits beside the apps' (architecture §7).
-	CPUs     float64
+	// MemoryMB caps one build's memory, which sits beside the apps' (architecture §7). There is no CPU cap: builds run
+	// one at a time per instance (decisions.md 058), so a build may use every core, and apps share what is left.
 	MemoryMB int
 
 	seedsOnce sync.Once
@@ -51,13 +50,6 @@ func (s *Sandbox) docker(ctx context.Context, args ...string) (string, error) {
 		return "", fmt.Errorf("docker %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
-}
-
-func (s *Sandbox) cpus() float64 {
-	if s.CPUs <= 0 {
-		return 2
-	}
-	return s.CPUs
 }
 
 func (s *Sandbox) memoryMB() int {
@@ -130,7 +122,7 @@ func (s *Sandbox) args(spec Spec) []string {
 		"--network=" + s.Network,
 		"--add-host=" + s.ProxyHost,
 		"--memory=" + strconv.Itoa(s.memoryMB()) + "m", "--memory-swap=" + strconv.Itoa(s.memoryMB()) + "m",
-		"--cpus=" + strconv.FormatFloat(s.cpus(), 'f', 1, 64), "--pids-limit=512",
+		"--pids-limit=512",
 		"--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
 		"--tmpfs", "/src:rw,size=512m",
 		"--tmpfs", "/out:rw,size=512m",

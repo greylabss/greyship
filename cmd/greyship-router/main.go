@@ -52,7 +52,7 @@ func run(logger *slog.Logger) error {
 	if cfg.HTTPOnly {
 		return serveHTTPOnly(ctx, cfg, pool, table, rt, logger)
 	}
-	redirect := router.Redirect(cfg.AppsPort, cfg.AppsDomain, cfg.PlatformDomain)
+	redirect := router.Redirect(cfg.AppsPort, table, cfg.AppsDomain, cfg.PlatformDomain)
 	tlsConfig, redirect, err := certificates(cfg, table, rt, redirect)
 	if err != nil {
 		return err
@@ -107,7 +107,7 @@ func certificates(cfg config.Router, table *router.Table, rt *router.Router, red
 	routed := rt.Serves
 	// The handshake names the service before its request arrives: start waking it now (F-81).
 	warm := func(hello *tls.ClientHelloInfo) {
-		if label, ok := router.Label(hello.ServerName, cfg.AppsDomain); ok {
+		if label, ok := rt.LabelOf(hello.ServerName); ok {
 			rt.Warm(label)
 		}
 	}

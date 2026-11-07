@@ -26,4 +26,24 @@ cookies for the dashboard or another app.
 
 ## Custom domains
 
-**Coming soon.** You'll add `api.example.com` with a CNAME (or A/AAAA records for an apex domain), with automatic HTTPS.
+Serve a web service on your own domain, such as `api.example.com`.
+
+1. In the dashboard open the project's **Domains** page and press **Add domain** (or run `grey domains add api.example.com`;
+   add `--service api` if the project has several web services).
+2. At your DNS provider create the record the page shows:
+   - a **CNAME** from `api.example.com` to the service's default address (for example `api-shop.greyshipapp.tech`), or
+   - for a name with no subdomain (`example.com`), an **A** record to your server's IP address, because a bare domain
+     can't be a CNAME.
+3. The page tells you when the name **points here**. HTTPS is set up by itself the first time someone visits the name, and
+   renews on its own.
+
+`grey domains` lists the project's addresses with the DNS state of each custom one; `grey domains remove api.example.com`
+stops serving it.
+
+Good to know:
+
+- A domain belongs to one service, and nobody else on the Greyship can add the same name.
+- Names under Greyship's own domains can't be used.
+- HTTPS needs your Greyship itself to be on a domain with HTTPS (see [Self-hosting](/self-hosting)). On an install that
+  still runs on its IP address, custom domains work over plain HTTP.
+- Removing a service or deleting the project removes its domains.

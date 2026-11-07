@@ -15,6 +15,7 @@ unless the instance's admin limits them.
 | Memory per instance | what the service asks for (`memory` in `greyship.toml`) |
 | Instances per service | what the service asks for (`max_instances`) |
 | Server build time | 10 minutes per build by default |
+| Server builds | one at a time per Greyship; the rest wait in a queue ("N builds ahead of yours") |
 | Runtime files | 50 MB, 5,000 files |
 
 Building on your own machine with `grey deploy` and building on the server are never counted or billed.

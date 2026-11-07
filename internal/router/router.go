@@ -84,12 +84,20 @@ func sameHost(host, domain string) bool {
 	return strings.TrimSuffix(host, ".") == strings.ToLower(domain)
 }
 
-// Serves reports whether host is a Greyship hostname or a routed app; only those get certificates.
+// LabelOf is the service label host reaches: a custom hostname's service, or the label under the apps domain.
+func (rt *Router) LabelOf(host string) (string, bool) {
+	if label, ok := rt.Table.HostLabel(host); ok {
+		return label, true
+	}
+	return Label(host, rt.Domain)
+}
+
+// Serves reports whether host is a Greyship hostname, a custom hostname or a routed app; only those get certificates.
 func (rt *Router) Serves(host string) bool {
 	if _, ok := rt.platformAddr(host); ok {
 		return true
 	}
-	label, ok := Label(host, rt.Domain)
+	label, ok := rt.LabelOf(host)
 	return ok && rt.Table.Has(label)
 }
 
@@ -98,7 +106,7 @@ func (rt *Router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rt.platform(w, r, addr)
 		return
 	}
-	label, ok := Label(r.Host, rt.Domain)
+	label, ok := rt.LabelOf(r.Host)
 	if !ok {
 		http.Error(w, "No app here.", http.StatusNotFound)
 		return
@@ -269,11 +277,14 @@ func (rt *Router) PauseIdle(ctx context.Context) {
 	}
 }
 
-// Redirect sends plain HTTP to HTTPS (F-53), keeping the host and path. Only hosts under domain are redirected,
-// so the router can't be used to bounce visitors elsewhere. port is appended when not 443.
-func Redirect(port string, domains ...string) http.Handler {
+// Redirect sends plain HTTP to HTTPS (F-53), keeping the host and path. Only hosts under domains, and custom hostnames
+// in the table, are redirected, so the router can't be used to bounce visitors elsewhere. port is appended when not 443.
+func Redirect(port string, table *Table, domains ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		known := false
+		if table != nil {
+			_, known = table.HostLabel(r.Host)
+		}
 		for _, d := range domains {
 			if _, ok := Label(r.Host, d); ok {
 				known = true

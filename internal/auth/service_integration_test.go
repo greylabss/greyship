@@ -309,3 +309,36 @@ func TestDeviceDeniedAndExpired(t *testing.T) {
 		t.Fatalf("made-up token = %v", err)
 	}
 }
+
+// An admin can make many accounts at once with one password; an address that is refused or already taken doesn't
+// stop the rest.
+func TestCreateMany(t *testing.T) {
+	ctx := context.Background()
+	svc, _, _ := setup(t)
+	if _, err := svc.CreateUser(ctx, auth.NewUser{Email: "already@example.com", Password: "a long enough password"}); err != nil {
+		t.Fatal(err)
+	}
+	res := svc.CreateMany(ctx, "shared-password-123", []string{"One@Example.com", "already@example.com", "not an email", "two@example.com", "one@example.com"})
+	got := make([]string, len(res))
+	for i, r := range res {
+		switch {
+		case r.Created:
+			got[i] = "created"
+		case errors.Is(r.Err, auth.ErrUserExists):
+			got[i] = "exists"
+		case errors.Is(r.Err, auth.ErrInvalidEmail):
+			got[i] = "invalid"
+		default:
+			got[i] = "other: " + r.Err.Error()
+		}
+	}
+	if want := "created exists invalid created exists"; strings.Join(got, " ") != want {
+		t.Fatalf("results = %v, want %s", got, want)
+	}
+	if _, u, err := svc.LoginPassword(ctx, "two@example.com", "shared-password-123", "10.0.0.1", "test"); err != nil || u.IsOwner {
+		t.Fatalf("a bulk-created account signs in with the shared password as a normal user: %v", err)
+	}
+	if weak := svc.CreateMany(ctx, "short", []string{"three@example.com"}); !errors.Is(weak[0].Err, auth.ErrWeakPassword) {
+		t.Fatalf("a weak shared password = %v", weak[0].Err)
+	}
+}

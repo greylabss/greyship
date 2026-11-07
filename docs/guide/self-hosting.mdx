@@ -65,15 +65,21 @@ Per user you can also:
   live keeps running. A deploy briefly runs the old and the new version side by side, so leave some room.
 - **Reset password** and **Make admin / Remove admin**. There is always at least one admin.
 
+To add many people at once, put their emails in a file, one per line, and run `sudo greyship-admin add-users emails.txt`.
+It asks for one password for all of them (tell them to change it in **Settings**) and skips anyone who already has an
+account.
+
 ### Forgot a password?
 
 Nobody gets an email. On the server, as root:
 
 ```sh
-greyship-admin reset-password someone@example.com
+sudo greyship-admin password someone@example.com
 ```
 
-It prints a new random password once and signs that account out everywhere.
+It prints a new random password once and signs that account out everywhere. A saved password can't be shown (only a
+fingerprint of it is stored), so this sets a new one. With no email it resets the owner's. `reset-password` is the same
+command.
 
 ## Add a domain (HTTPS)
 
@@ -142,7 +148,7 @@ deploy notifications still appear in the bell and as browser notifications.
 greyship-admin status          # is every service up
 greyship-admin logs api        # follow a service's log (api, builder, scheduler, agent, router, dashboard)
 greyship-admin upgrade         # install the latest release (keeps your settings and data)
-greyship-admin reset-password <email>   # a forgotten password
+greyship-admin password <email>   # a forgotten password
 ```
 
 Settings live in `/etc/greyship/greyship.env`; restart with

@@ -111,6 +111,13 @@ type DeviceCode struct {
 	CreatedAt      time.Time
 }
 
+type Domain struct {
+	Hostname  string
+	ServiceID string
+	CreatedBy *string
+	CreatedAt time.Time
+}
+
 type EnvExclude struct {
 	ServiceID string
 	Env       string

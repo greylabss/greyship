@@ -1,5 +1,5 @@
 #!/bin/sh
-# Looking after a Greyship server: greyship-admin status | logs [service] | reset-password <email> | backup | restore <file> | domain | upgrade | version
+# Looking after a Greyship server: greyship-admin status | logs [service] | password [email] | add-users <file> | backup | restore <file> | domain | upgrade | version
 # The grey command (for deploying apps) is a different program; this one only runs on the server.
 set -eu
 services="api builder scheduler agent router dashboard"
@@ -17,15 +17,35 @@ case "${1:-status}" in
 		svc=${2:-api}
 		exec journalctl -u "greyship-$svc" -n 100 -f --no-pager
 		;;
-	reset-password)
+	reset-password | password)
 		# A forgotten password is fixed here, on the server: the account gets a new random password, printed once, and
-		# is signed out everywhere.
-		[ "$(id -u)" = 0 ] || { echo "run as root: sudo greyship-admin reset-password <email>" >&2; exit 1; }
+		# is signed out everywhere. A saved password can't be shown (only its hash is stored), so this sets a new one.
+		# Without an email it is the owner's: the address the installer was given.
+		[ "$(id -u)" = 0 ] || { echo "run as root: sudo greyship-admin password [email]" >&2; exit 1; }
 		email=${2:-}
-		[ -n "$email" ] || { echo "usage: greyship-admin reset-password <email>" >&2; exit 1; }
+		[ -n "$email" ] || email=$(sed -n 's/^GREYSHIP_OWNER_EMAIL=//p' /etc/greyship/greyship.env)
+		[ -n "$email" ] || { echo "usage: greyship-admin password <email>" >&2; exit 1; }
 		# systemd reads greyship.env exactly as the service does, and runs the command as the same user.
 		exec systemd-run --quiet --wait --pipe --collect -p User=greyship -p EnvironmentFile=/etc/greyship/greyship.env \
 			/usr/local/lib/greyship/greyship-api reset-password "$email"
+		;;
+	add-users)
+		# Makes an account for every email in a file (one per line), all with the same password, which you give when
+		# asked (or in GREYSHIP_USERS_PASSWORD). Tell people to change it in Settings. Emails that already have an
+		# account are left alone.
+		[ "$(id -u)" = 0 ] || { echo "run as root: sudo greyship-admin add-users <file of emails>" >&2; exit 1; }
+		file=${2:-}
+		[ -f "$file" ] || { echo "usage: greyship-admin add-users <file with one email per line>" >&2; exit 1; }
+		password=${GREYSHIP_USERS_PASSWORD:-}
+		if [ -z "$password" ]; then
+			printf "Password for all of them (10 to 128 characters): " >&2
+			stty -echo 2>/dev/null || true
+			read -r password
+			stty echo 2>/dev/null || true
+			echo >&2
+		fi
+		{ printf '%s\n' "$password"; cat "$file"; } | exec systemd-run --quiet --wait --pipe --collect -p User=greyship -p EnvironmentFile=/etc/greyship/greyship.env \
+			/usr/local/lib/greyship/greyship-api create-users
 		;;
 	backup)
 		# One file with the database and /etc/greyship (the master key, certificates' settings, the GitHub app key).
@@ -150,7 +170,7 @@ MSG
 		cat /usr/local/lib/greyship/VERSION 2>/dev/null || echo unknown
 		;;
 	*)
-		echo "usage: greyship-admin status | logs [service] | reset-password <email> | backup | restore <file> | domain | upgrade | version" >&2
+		echo "usage: greyship-admin status | logs [service] | password [email] | add-users <file> | backup | restore <file> | domain | upgrade | version" >&2
 		exit 1
 		;;
 esac

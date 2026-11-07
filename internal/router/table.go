@@ -80,6 +80,7 @@ type Table struct {
 	mu       sync.RWMutex
 	routes   map[string]*route
 	backends map[string]*backend
+	hosts    map[string]string // custom hostname → the subdomain label of the service it points at
 	changed  chan struct{}
 }
 
@@ -207,12 +208,45 @@ func (t *Table) Watch(ctx context.Context, pool *pgxpool.Pool, resync time.Durat
 }
 
 func (t *Table) reload(ctx context.Context, pool *pgxpool.Pool) error {
-	rows, err := store.New(pool).RoutingTable(ctx)
+	q := store.New(pool)
+	rows, err := q.RoutingTable(ctx)
 	if err != nil {
 		return fmt.Errorf("load routes: %w", err)
 	}
+	domains, err := q.RoutingDomains(ctx)
+	if err != nil {
+		return fmt.Errorf("load custom domains: %w", err)
+	}
 	t.Set(rows)
+	t.SetDomains(domains)
 	return nil
+}
+
+// SetDomains replaces the custom hostnames: each points at the subdomain label of a service.
+func (t *Table) SetDomains(rows []store.RoutingDomainsRow) {
+	hosts := make(map[string]string, len(rows))
+	for _, r := range rows {
+		hosts[strings.ToLower(r.Hostname)] = r.Subdomain
+	}
+	t.mu.Lock()
+	t.hosts = hosts
+	t.mu.Unlock()
+}
+
+// HostLabel is the service label a custom hostname points at.
+func (t *Table) HostLabel(host string) (string, bool) {
+	host = strings.TrimSuffix(strings.ToLower(hostOnly(host)), ".")
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	label, ok := t.hosts[host]
+	return label, ok
+}
+
+func hostOnly(host string) string {
+	if h, _, ok := strings.Cut(host, ":"); ok {
+		return h
+	}
+	return host
 }
 
 // Label returns the subdomain label of host under domain ("api-shop" for "api-shop.greyship.tech:443"), or false.

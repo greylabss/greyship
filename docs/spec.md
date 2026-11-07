@@ -1,14 +1,14 @@
 # Greyship — Product Spec
 
-> Status: v1 spec · Owner: Haki · Last updated: 2026-10-23
+> Status: living spec of the self-hosted product (decisions.md 050, 053) · Owner: Haki · Last updated: 2026-11-07. Requirements that are not built yet say so.
 
 ---
 
 ## 1. What we're building
 
-Greyship is a serverless runtime platform built only for Go. A developer pushes a Go repo (from the CLI, the dashboard, or GitHub) and every service in it goes live on a URL, scales to zero when idle, and wakes on the next request.
+Greyship is an open-source (AGPL-3.0), self-hosted serverless runtime for Go. You install it on a server you own with one command. People on that instance push a Go repo (from the CLI, the dashboard, or GitHub) and every service in it goes live on a URL, scales to zero when idle, and wakes on the next request. The instance's admin adds the people, and can limit how much each may use.
 
-**One line:** Deploy your Go backend — APIs, workers, crons — with one command. Pay only while it runs.
+**One line:** Your own place to deploy Go backends — APIs, workers, crons — with one command, that holds no CPU while idle.
 
 ### Why Go only
 Being single-language is the strategy, not a limitation. Because we only run Go we can:
@@ -20,17 +20,18 @@ Being single-language is the strategy, not a limitation. Because we only run Go 
 ### Who it's for
 | Persona | Situation | What they want |
 | --- | --- | --- |
-| **Indie Gopher** | Side projects, hackathon APIs, bots | Free, instant, no ops. Will tell friends. |
-| **Startup backend dev** | 1–5 person team, Go API + worker | Cheap while traffic is low, scales when it isn't, logs that work |
-| **Agency / studio** | Many small client APIs | Dozens of apps on one bill; idle ones cost nothing |
-| **Learner** | Learning Go, wants it online | Zero friction from `go run` to a public URL |
+| **Solo developer with a VPS** | Side projects, bots, hackathon APIs on a server they already pay for | One command to install, no ops, many apps on one cheap box |
+| **Small team** | 1–10 people, Go API + worker | Their own internal platform: logins for the team, logs that work, deploys on every push |
+| **Agency / studio** | Many small client APIs | One instance for every client app, with limits per person so one can't starve the rest |
+| **Learner or beta cohort** | Learning Go, or a group trying a product | An admin who adds each person with a password, and a path from `go run` to a public URL |
 
-### Non-goals (v1)
+### Non-goals
 - Other languages.
-- Hosted databases (users connect external ones).
+- Hosted databases (people connect external ones).
 - Frontend hosting of any kind (static sites, React/Next.js, SSR). Frontends that are part of the Go binary via `//go:embed` work automatically because they are just Go.
 - GPUs, long-running batch jobs over 15 minutes, WebSockets over 1 hour.
-- Self-hosted / on-prem edition.
+- Billing, plans or a hosted cloud (decisions.md 050). A paid hosted version, if it ever comes, is a separate product.
+- High availability across servers (one server per instance for now).
 
 ---
 
@@ -38,15 +39,15 @@ Being single-language is the strategy, not a limitation. Because we only run Go 
 1. **`main` is the contract.** If it runs with `go run`, it runs on Greyship. No SDK, no wrappers.
 2. **Zero config by default, full config when needed.** Detection first; `greyship.toml` overrides.
 3. **CLI and dashboard are equal.** Every action exists in both, backed by one public API. One documented exception: per-service env overrides are dashboard-only (F-47a).
-4. **Never surprise someone with a bill.** Spend caps on by default.
+4. **Easy to run.** One command installs it, no domain is needed to start, a forgotten password is fixed on the server, and an upgrade keeps everything.
 5. **Respect Go's runtime.** Background goroutines get time to finish; graceful shutdown is honored.
 6. **Fast is a feature.** Deploy in under a minute; cold start under 1s now, under 100ms later.
 
 ### Serverless rules (every feature must pass all four)
-1. **No servers to manage.** Users never see, size, patch or SSH into machines.
-2. **Idle costs $0 by default.** Anything that stays running while idle is an explicit opt-in, labelled "always on · billed 24/7" in the CLI and dashboard.
+1. **People who deploy never manage servers.** They never see, size, patch or SSH into machines; only the instance's owner looks after the one server.
+2. **Idle holds no CPU by default.** Anything that stays running while idle (`min_instances`, workers) is an explicit opt-in, labelled "always on · holds memory 24/7" in the CLI and dashboard.
 3. **Scales automatically,** up with load and down to zero, without the user doing anything.
-4. **Billing follows actual running time** (plus requests and egress), never reserved capacity by default.
+4. **Usage follows actual running time,** and what a person may use is limited by their admin (F-71), never by reserved capacity by default.
 
 A feature that would break a rule is redesigned (e.g. made event-driven) or shipped only as a clearly labelled opt-in.
 
@@ -56,8 +57,8 @@ A feature that would break a rule is redesigned (e.g. made event-driven) or ship
 
 | Concept | Meaning |
 | --- | --- |
-| **Account** | A user (GitHub or email login). |
-| **Team** | Group of accounts sharing projects and billing. Personal team created by default. |
+| **Account** | A user: an email and a password. The first account on an instance is its owner and admin; the admin creates the rest. |
+| **Team** | Owns projects. Every account has a personal team; sharing a team between accounts is not built yet. |
 | **Project** | One repo. Holds services, env vars, domains. |
 | **Service** | One Go `main` package inside the project. Type: `web`, `worker`, or `cron`. |
 | **Deployment** | An immutable build of a project at a commit. Has status and logs. |
@@ -69,7 +70,7 @@ A feature that would break a rule is redesigned (e.g. made event-driven) or ship
 ## 4. Functional requirements
 
 ### 4.1 Auth & accounts
-- **F-1** Sign in with an email and a password (decisions.md 053). There are no emailed codes, no Google or GitHub sign-in and no self-service signup. The first visit to a new instance shows **Create the owner account** (email, name, password); it works once, and when `GREYSHIP_OWNER_EMAIL` is set (the installer sets it when given `--email`) only that email may create it. The owner becomes the instance's **admin** (F-56) and adds everyone else (F-56a). A forgotten password is reset on the server with `greyship-admin reset-password <email>` (a new random password, printed once, the account signed out everywhere); there is no "forgot password" email.
+- **F-1** Sign in with an email and a password (decisions.md 053). There are no emailed codes, no Google or GitHub sign-in and no self-service signup. The first visit to a new instance shows **Create the owner account** (email, name, password); it works once, and when `GREYSHIP_OWNER_EMAIL` is set (the installer sets it when given `--email`) only that email may create it. The owner becomes the instance's **admin** (F-56) and adds everyone else (F-56a). A forgotten password is reset on the server with `greyship-admin password <email>` (a new random password, printed once, the account signed out everywhere); there is no "forgot password" email.
 - **F-2** CLI login via device flow (`grey login` opens browser, CLI polls).
 - **F-3** Personal API tokens, scoped to a team, revocable.
 - **F-4** Teams: invite by email, roles `owner`, `admin`, `member`, `viewer`. *(Not built: every user has their own personal team for now.)*
@@ -223,10 +224,10 @@ Resolution order for one service in one environment (later wins):
 - **F-43** *(v2)* Envi integration: link a project to an Envi workspace.
 
 ### 4.6 Domains & TLS
-- **F-50** Every public web service gets `<service>-<project>.greyship.app` (served under `greyshipapp.tech` until that domain is bought, decisions 025 and 037). Apps never share a registrable domain with the site, dashboard or API (`greyship.tech`). `grey deploy` prints it when the deploy is live. Private services get no public URL (see F-90). Workers and crons never get a URL. Scaled copies of a service share its one URL.
-- **F-50a** Free subdomains are unique across all users. If `<service>-<project>` is already taken, a short random suffix is added (`api-acme-api-k7x2.greyship.app`) and shown at deploy time. Once assigned, a service keeps its subdomain until it's deleted or renamed.
-- **F-50b** Subdomain labels are at most 63 characters. Longer `<service>-<project>` names are shortened and a short hash added (`stripe-webhook-a3f9.greyship.app`). Custom domains have no such limits.
-- **F-51** Custom domains: `grey domains add api.example.com`; verified by CNAME (subdomain) or A/AAAA (apex).
+- **F-50** Every public web service gets `<service>-<project>.<apps domain>`: the instance's apps domain (`GREYSHIP_APPS_DOMAIN`), or an `apps-<ip>.sslip.io` name until the owner adds a domain (decisions 037, 050). Apps should never share a registrable domain with the dashboard or API. `grey deploy` prints it when the deploy is live. Private services get no public URL (see F-90). Workers and crons never get a URL. Scaled copies of a service share its one URL.
+- **F-50a** Default subdomains are unique across all users of the instance. If `<service>-<project>` is already taken, a short random suffix is added (`api-acme-api-k7x2.<apps domain>`) and shown at deploy time. Once assigned, a service keeps its subdomain until it's deleted or renamed.
+- **F-50b** Subdomain labels are at most 63 characters. Longer `<service>-<project>` names are shortened and a short hash added (`stripe-webhook-a3f9.<apps domain>`). Custom domains have no such limits.
+- **F-51** Custom domains (decisions.md 057): Project → Domains, `grey domains add <hostname> [--service name]`, `grey domains remove <hostname>` and `grey domains` (list), or `POST|GET|DELETE /v1/projects/{id}/domains`. The person creates the DNS record themselves (a CNAME to the service's default address, or an A record to the server for a name with no subdomain); the list shows for each custom domain whether its DNS points at this server. A hostname belongs to one web service, can't be under the platform or apps domain, and goes away with its service or project. Viewers can look but not change.
 - **F-52** Automatic TLS via ACME for all domains; renewal automatic. Certificates are issued the first time a hostname is visited, only for hostnames Greyship serves.
 - **F-53** HTTP → HTTPS redirect on by default.
 
@@ -236,8 +237,8 @@ Resolution order for one service in one environment (later wins):
 - **F-62** Request metrics: count, status codes, p50/p95/p99 latency, cold starts and their duration.
 - **F-63** Instance metrics: CPU, memory, instance count over time.
 - **F-64** Go runtime metrics (no code change): goroutines, heap in use, GC pause, GC count.
-- **F-65** *(Pro)* On-demand profiles: `grey pprof cpu|heap|goroutine <service>`; dashboard flame graph. Requires `import _ "greyship.dev/agent"`.
-- **F-66** *(Pro)* Alerts: goroutine leak (monotonic growth), memory near limit, error-rate spike, crash loop. Delivery via email + webhook.
+- **F-65** *(not built)* On-demand profiles: `grey pprof cpu|heap|goroutine <service>`; dashboard flame graph. Requires `import _ "greyship.dev/agent"`.
+- **F-66** *(not built)* Alerts: goroutine leak (monotonic growth), memory near limit, error-rate spike, crash loop. Delivery via email + webhook.
 
 ### 4.8 Limits per user
 - **F-70** There are no plans, prices or billing in Greyship (decisions.md 050, 053). Everyone on an instance can build and run as much as the server allows, unless the instance's admin limits them.
@@ -266,9 +267,9 @@ Commands (v1): `login`, `logout`, `whoami`, `init`, `dev`, `deploy`, `ps`, `logs
 - **F-56b** Email is optional and only sends deploy notifications (success, failure, new project). It is turned on in the dashboard (`/admin/email`, admin only): a Resend API key, the sending domain (verified in Resend), a sender name and an on/off switch, plus **Send test email** (to the admin, showing the provider's error if it fails). The key is stored encrypted and never shown again; leaving it empty when saving keeps it. Mail is sent from `notifications@<domain>`. Settings saved here replace `GREYSHIP_RESEND_API_KEY`, which still works when nothing is saved. With email off, nothing is mailed; the bell and browser push still work. Signing in never needs email.
 
 ### 4.10 Dashboard
-Pages: Overview (projects + usage), Project (services, latest deploy, URLs), Deployments (list, logs, rollback), Logs, Metrics, Go Runtime, Env Vars, Domains, Settings, Team, Billing.
-- First-run flow: connect GitHub → pick repo → detected services shown → Deploy. Target: live in under 2 minutes without touching a terminal.
-- As of step 17 the dashboard shows real data for projects, services (with live state and URLs), deployments and build logs, app logs, env var keys and API tokens, and it approves `grey login`. Env vars can be added, changed, removed, or pasted as a whole `.env` file, parsed with exactly the rules `grey deploy` uses for `.env.prod`; values are never sent back to the browser. Screens the API can't answer yet (usage, billing, metrics, Go runtime, custom domains, project settings, GitHub import) say what release they arrive with instead of showing sample numbers. Redeploy and rollback work from the dashboard (F-27), and tokens can be revoked there (after a confirm). The dashboard never shows a button that doesn't work.
+Pages: Overview (projects), Project (services, latest deploy, URLs), Deployments (list, logs, rollback), Logs, Metrics, Go Runtime, Env Vars, Domains, Settings (rename, delete), Usage (what your apps use next to your limits), account Settings (password, notifications, your GitHub App, tokens), and for the admin Admin (overview, users and limits, email).
+- First-run flow: sign in → create your GitHub App (once) and install it on a repo → detected services shown → Deploy. Target: live in under 2 minutes without touching a terminal.
+- As of step 17 the dashboard shows real data for projects, services (with live state and URLs), deployments and build logs, app logs, env var keys and API tokens, and it approves `grey login`. Env vars can be added, changed, removed, or pasted as a whole `.env` file, parsed with exactly the rules `grey deploy` uses for `.env.prod`; values are never sent back to the browser. Screens the API can't answer yet (metrics, Go runtime) say that they are not built instead of showing sample numbers. Redeploy and rollback work from the dashboard (F-27), and tokens can be revoked there (after a confirm). The dashboard never shows a button that doesn't work.
 
 ### 4.11 Public API
 - REST, JSON, versioned `/v1`. Everything the CLI and dashboard do goes through it.
@@ -308,13 +309,12 @@ For teams running an API gateway in front of private services.
 | Wake from pause | p50 < 50ms | p50 < 20ms |
 | Warm request overhead (router) | < 5ms | < 2ms |
 | Deploy time (small API, cached) | < 60s | < 30s |
-| Control plane availability | 99.5% | 99.9% |
-| Running app availability | 99.5% | 99.9% |
-| Data durability (Postgres) | Daily off-site backup, WAL archiving | PITR |
+| Availability | One server: as good as the server (no high availability) | Two or more nodes |
+| Data durability (Postgres) | `greyship-admin backup` before every upgrade and on demand; copy it off the server | Scheduled off-site backups, PITR |
 
 - **Security:** every app in a sandbox (gVisor now, Firecracker later); no tenant can reach another tenant or internal services; secrets encrypted with envelope encryption.
-- **Abuse:** free tier CPU-throttled; outbound port 25 blocked; mining and phishing detection.
-- **Privacy:** we never read app memory or request bodies; logs belong to the customer and are deleted on project deletion.
+- **Abuse:** per-user limits set by the admin (F-71); outbound port 25 blocked *(not built)*; the admin decides who gets an account, so open signup abuse doesn't exist.
+- **Privacy:** we never read app memory or request bodies; logs belong to the people who deploy and are deleted with the project (F-10c).
 
 ---
 
@@ -328,7 +328,7 @@ Greyship has no plans. What every deploy is subject to, on any instance:
 | Memory per instance | set by the service (`memory` in `greyship.toml`), up to the node's memory |
 | Max instances per service | set by the service (`max_instances`) |
 | Build time (server builds) | `GREYSHIP_BUILD_TIMEOUT`, 10 minutes by default |
-| Concurrent builds | one per builder worker, and per user whatever the admin allows (F-71) |
+| Concurrent builds | one at a time per instance, the rest queue; each build may use every CPU core (decisions.md 058); per user also whatever the admin allows (F-71) |
 
 On top of that the instance's admin may limit each user's memory, CPU and concurrent builds (F-71).
 
@@ -344,12 +344,11 @@ None. Greyship is open source (AGPL-3.0) and runs on your own server (decisions.
 
 | Stage | Metric | Target |
 | --- | --- | --- |
-| Private beta | Users who deploy successfully on first try | > 80% |
-| Private beta | Time from signup to live URL | < 3 min median |
-| Public beta | Weekly active deployers | 500 |
-| Public beta | Projects still receiving traffic after 30 days | > 40% |
-| Paid launch | Free → paid conversion | 3–5% |
-| Paid launch | Gross margin | > 60% |
+| Install | Time from `curl … | sh` on a fresh server to the owner's first live app | < 15 min median |
+| Install | Installs that finish without the owner asking for help | > 90% |
+| Use | Deploys that succeed on the first try | > 80% |
+| Use | Time from first sign-in to a live URL | < 5 min median |
+| Adoption | Public instances running, GitHub stars, contributors | tracked, no target yet |
 | Always | Cold start p50 | within NFR target |
 
 ---
@@ -358,11 +357,10 @@ None. Greyship is open source (AGPL-3.0) and runs on your own server (decisions.
 
 | Release | Contents |
 | --- | --- |
-| **Alpha (internal)** | CLI deploy, web services, subdomains + TLS, env vars, logs, scale to zero, pause-first, binary-only images, automatic runtime tuning, single node |
-| **Private beta** | Dashboard, GitHub deploys, `grey dev`, `cmd/*` detection, release command (migrations), workers, crons, custom domains, rollback, metrics, TLS head start, path routing |
-| **Public beta** | Billing (Stripe + Paystack), spend caps, Go runtime metrics, abuse controls, docs site, 2nd node, event-driven workers + built-in queue, private services + `.internal` names, gRPC (h2c), service map |
-| **v1.0** | Firecracker runtime, pprof + alerts, preview deploys, teams, automatic PGO, startup insights, multi-repo projects |
-| **v1.x** | Envi integration, OpenTelemetry, more regions |
+| **v0.1 (shipped)** | One-command installer (no domain needed; `greyship-admin domain` adds HTTPS), email + password sign-in with the owner creating users, per-user limits, admin view, dashboard and CLI, GitHub deploys, `cmd/*` detection, release command (migrations), rollback and redeploy, env vars, logs, notifications, backup, restore and upgrades that keep everything, public repo and releases |
+| **v0.1.x (shipped)** | Every team creates its own GitHub App from the dashboard, project settings and deleting projects, custom domains, `make release-patch|minor|major`, install URLs |
+| **Next** | Workers that wake on events and crons that run on schedule, built-in queue, metrics and Go runtime metrics, private services and `.internal` names, SMTP email, preview deploys, a release workflow in GitHub Actions |
+| **Later** | Teams that share projects (and limits per team), second node, Firecracker runtime, pprof and alerts, automatic PGO, startup insights, multi-repo projects, OpenTelemetry |
 
 ---
 
@@ -372,16 +370,14 @@ Greyship stays the best place for Go by going deeper into Go than any general pl
 
 | When | Item | What it means |
 | --- | --- | --- |
-| Before launch | **Vulnerability checks on deploy** | Run `govulncheck` on every build; warn (or block, per project setting) when the code actually calls a vulnerable function, with the fixed version. |
-| Before launch | **Go-aware crash reports** | On panic or out-of-memory kill, capture the panic trace / goroutine dump and show it grouped and readable in the dashboard. |
-| Before launch | **Open-source CLI, guest init and agent** | Public repos so Gophers can read what runs their code. |
-| After launch | **MCP server for coding agents** | Agents can deploy, read logs, inspect metrics and roll back through MCP; CLI `--json` stays complete. |
-| After launch | **Framework starters + Deploy button** | Official starters for net/http, Chi, Gin, Echo, Fiber; a "Deploy to Greyship" button for READMEs. |
-| After traction | **Background jobs package** | `greyship.dev/jobs`: a typed Go API over the built-in queue (F-35a) with retries and scheduling. Jobs wake workers; they never keep them running. |
-| After traction | **Go version upgrade checks** | When a new Go release ships, test-build each app on it and report whether it's safe to upgrade and any speed change. |
+| Next | **Vulnerability checks on deploy** | Run `govulncheck` on every build; warn (or block, per project setting) when the code actually calls a vulnerable function, with the fixed version. |
+| Next | **Go-aware crash reports** | On panic or out-of-memory kill, capture the panic trace / goroutine dump and show it grouped and readable in the dashboard. |
+| Done | **Open source** | The whole platform, CLI and installer are AGPL-3.0 at github.com/greylabss/greyship. |
+| Later | **MCP server for coding agents** | Agents can deploy, read logs, inspect metrics and roll back through MCP; CLI `--json` stays complete. |
+| Later | **Framework starters + Deploy button** | Official starters for net/http, Chi, Gin, Echo, Fiber; a "Deploy to Greyship" button for READMEs. |
+| Later | **Background jobs package** | `greyship.dev/jobs`: a typed Go API over the built-in queue (F-35a) with retries and scheduling. Jobs wake workers; they never keep them running. |
+| Later | **Go version upgrade checks** | When a new Go release ships, test-build each app on it and report whether it's safe to upgrade and any speed change. |
 | Later (v1.x) | **API docs** | Deploy detects an OpenAPI file (2.0 / `swagger.json` or 3.x; from the repo, or fetched once from the app's `/openapi.json` during the health check) and renders it **privately** in a dashboard "API" tab. If the app already serves its own Swagger UI, the tab links to it instead. Optional public docs URL, opt-in only. `grey docs` scans code locally (net/http, chi, gin, echo routes and the structs handlers decode/encode) and writes a standard `openapi.yaml` for the dev to review and commit — never a custom format. |
-| Ongoing | **Free for students and open source** | Verified students and OSS projects get Pro limits free. |
-| Ongoing | **Published cost model** | Explain pricing from real per-instance cost; Go's small footprint lets Greyship stay the cheapest place to run Go. |
 
 Guardrail: Greyship stays Go-only. Requests to support other languages are declined.
 
@@ -389,7 +385,7 @@ Guardrail: Greyship stays Go-only. Requests to support other languages are decli
 
 ## 10. Open questions
 1. ~~Final name.~~ Decided: **Greyship** (see decisions.md 007).
-2. Should paused instances carry a small memory charge?
-3. Free-tier abuse: require phone/card verification above some usage?
-4. First region: EU VPS only, or Lagos from the start?
-5. Open-source the CLI and guest agent? (Recommended: yes — builds trust with Gophers.)
+2. ~~Open-source the CLI and guest agent?~~ Decided and done: the whole platform is open source (decisions.md 050).
+3. Should paused instances count against a user's memory limit? Today they do, because they keep their memory (F-71).
+4. Do teams that share projects need limits per team rather than per user? (Today every user has one team.)
+5. Should the release be built and published by a workflow in the public repository instead of a laptop?

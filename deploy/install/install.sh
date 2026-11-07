@@ -337,7 +337,7 @@ GREYSHIP_PROXY_SECRET=$proxy
 GREYSHIP_VAPID_PRIVATE_KEY=$("$DL/server/greyship-api" vapid-key)
 # The owner is the first account, created by whoever opens the dashboard first (or only GREYSHIP_OWNER_EMAIL, when
 # set). Nobody can sign themselves up after that: the owner adds users in the dashboard (Admin > Users) with a
-# password. A forgotten password is reset on this server: greyship-admin reset-password <email>.
+# password. A forgotten password is reset on this server: greyship-admin password <email>.
 $owner_line
 # No domain yet: plain HTTP. Run greyship-admin domain to switch to HTTPS (this line is removed then).
 $http_line
@@ -462,7 +462,7 @@ finish() {
 ✓ Greyship $VERSION is running.
 
 Open  $DASH_URL   and $owner_hint.
-Add everyone else under Admin > Users (email and password). Forgot a password? On this server: greyship-admin reset-password <email>
+Add everyone else under Admin > Users (email and password). Forgot a password? On this server: greyship-admin password <email>
 From your computer (installs grey, already pointed at this server):
     curl -fsSL $DASH_URL/install | GREY_SERVER=$DASH_URL sh
 then   grey login
@@ -493,7 +493,7 @@ MSG
 		cat <<MSG
 
 Then open https://$PLATFORM_DOMAIN and $owner_hint.
-Add everyone else under Admin > Users (email and password). Forgot a password? On this server: greyship-admin reset-password <email>
+Add everyone else under Admin > Users (email and password). Forgot a password? On this server: greyship-admin password <email>
 From your computer (installs grey, already pointed at this server):
     curl -fsSL https://$PLATFORM_DOMAIN/install | GREY_SERVER=https://$PLATFORM_DOMAIN sh
 then   grey login
@@ -501,7 +501,7 @@ MSG
 	fi
 	cat <<MSG
 
-Looking after it: greyship-admin status | logs | reset-password | backup | restore | domain | upgrade     Settings: $ETC/greyship.env
+Looking after it: greyship-admin status | logs | password | backup | restore | domain | upgrade     Settings: $ETC/greyship.env
 Docs: https://docs.greyship.tech/self-hosting
 MSG
 }

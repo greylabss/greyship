@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +24,7 @@ import (
 	"greyship.tech/internal/bus"
 	"greyship.tech/internal/config"
 	"greyship.tech/internal/deploy"
+	"greyship.tech/internal/domains"
 	"greyship.tech/internal/env"
 	"greyship.tech/internal/github"
 	"greyship.tech/internal/mail"
@@ -50,11 +55,63 @@ func main() {
 		}
 		return
 	}
+	// greyship-api create-users reads a password on the first line of stdin and one email per line after it, and makes
+	// an account for each (greyship-admin add-users).
+	if len(os.Args) == 2 && os.Args[1] == "create-users" {
+		if err := createUsers(os.Stdin); err != nil {
+			fmt.Fprintln(os.Stderr, "create-users:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	if err := run(logger); err != nil {
 		logger.Error("greyship-api stopped", "err", err)
 		os.Exit(1)
 	}
+}
+
+func createUsers(in io.Reader) error {
+	cfg, err := config.Load(os.Getenv)
+	if err != nil {
+		return err
+	}
+	var lines []string
+	sc := bufio.NewScanner(in)
+	for sc.Scan() {
+		if line := strings.TrimSpace(sc.Text()); line != "" && !strings.HasPrefix(line, "#") {
+			lines = append(lines, line)
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return err
+	}
+	if len(lines) < 2 {
+		return errors.New("give a password on the first line and at least one email after it")
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	created, exists, refused := 0, 0, 0
+	for _, r := range auth.NewService(pool, time.Now, cfg.OwnerEmail).CreateMany(ctx, lines[0], lines[1:]) {
+		switch {
+		case r.Created:
+			created++
+			fmt.Println("created  ", r.Email)
+		case errors.Is(r.Err, auth.ErrUserExists):
+			exists++
+			fmt.Println("exists   ", r.Email)
+		default:
+			refused++
+			fmt.Printf("refused   %s: %v\n", r.Email, r.Err)
+		}
+	}
+	fmt.Printf("%d created, %d already had an account, %d refused\n", created, exists, refused)
+	return nil
 }
 
 func resetPassword(email string) error {
@@ -158,6 +215,7 @@ func run(logger *slog.Logger) error {
 	handler := api.New(api.Options{
 		Auth:          authService,
 		Accounts:      authService,
+		Domains:       &domains.Service{Pool: pool, Projects: projects, AppsDomain: cfg.AppsDomain, PlatformDomain: cfg.PlatformDomain, Resolver: net.DefaultResolver},
 		Mail:          sender,
 		Projects:      projects,
 		Deployments:   deploy.NewService(pool, projects, storage, logger, time.Now),

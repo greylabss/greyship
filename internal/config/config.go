@@ -30,25 +30,26 @@ type Storage struct {
 }
 
 type Config struct {
-	Dev          bool
-	Addr         string
-	DatabaseURL  string
-	DashboardURL string
-	HTTPOnly     bool   // GREYSHIP_HTTP_ONLY: no TLS yet (a fresh install on a bare IP); the owner adds a domain later
-	OwnerEmail   string // GREYSHIP_OWNER_EMAIL: this account is made an instance owner at startup
-	ProxySecret  string // GREYSHIP_PROXY_SECRET: shared with the dashboard's /v1 proxy
-	CookieSecret []byte
-	ResendAPIKey string
-	MailFrom     string
-	NotifyFrom   string // sender for deploy and project notifications
-	VAPIDKey     string // GREYSHIP_VAPID_PRIVATE_KEY: browser push signing key; empty turns push off
-	VAPIDSubject string // contact the push services may use, mailto: or https:
-	OutboxDir    string
-	Storage      Storage
-	AppsDomain   string
-	AppsPort     string
-	MasterKey    string
-	BuildGOARCH  string
+	Dev            bool
+	Addr           string
+	DatabaseURL    string
+	DashboardURL   string
+	HTTPOnly       bool   // GREYSHIP_HTTP_ONLY: no TLS yet (a fresh install on a bare IP); the owner adds a domain later
+	OwnerEmail     string // GREYSHIP_OWNER_EMAIL: this account is made an instance owner at startup
+	ProxySecret    string // GREYSHIP_PROXY_SECRET: shared with the dashboard's /v1 proxy
+	CookieSecret   []byte
+	ResendAPIKey   string
+	MailFrom       string
+	NotifyFrom     string // sender for deploy and project notifications
+	VAPIDKey       string // GREYSHIP_VAPID_PRIVATE_KEY: browser push signing key; empty turns push off
+	VAPIDSubject   string // contact the push services may use, mailto: or https:
+	OutboxDir      string
+	Storage        Storage
+	AppsDomain     string
+	PlatformDomain string // Greyship's own hostnames (api., s3., the dashboard); custom domains can't use it
+	AppsPort       string
+	MasterKey      string
+	BuildGOARCH    string
 }
 
 // devMasterKey encrypts env vars in development only; production must set GREYSHIP_MASTER_KEY.
@@ -76,6 +77,7 @@ func Load(getenv func(string) string) (Config, error) {
 	cfg.Storage = loadStorage(get, cfg.Dev)
 	// Must match the router's, which serves these names.
 	cfg.AppsDomain = get("APPS_DOMAIN", devOrValue(cfg.Dev, "localhost", "greyship.tech"))
+	cfg.PlatformDomain = get("PLATFORM_DOMAIN", "")
 	cfg.AppsPort = get("APPS_PORT", devOrValue(cfg.Dev, "8443", ""))
 	cfg.MasterKey = get("MASTER_KEY", devOrValue(cfg.Dev, devMasterKey, ""))
 	// The same setting the builder reads: what the runtime nodes run, which local builds must target.
@@ -122,9 +124,7 @@ type Builder struct {
 	DefaultGo   string
 	GOARCH      string
 	Timeout     time.Duration
-	CPUs        float64
 	MemoryMB    int
-	Concurrency int      // builds at once on this builder
 	Seed        []string // Go versions whose standard-library build cache is made ahead of time
 	Runner      string   // gvisor (this machine) or fly (decisions.md 039)
 	Fly         Fly
@@ -162,14 +162,7 @@ func LoadBuilder(getenv func(string) string) (Builder, error) {
 	}
 	var err error
 	errs := b.Storage.check()
-	// The dev Mac's sandbox VM has 4 CPUs and 4GB, shared with app instances; a production server gives builds more.
-	// Two builds at a time on a server, 3 CPUs each (a 6-core machine), one team at a time each.
-	if b.Concurrency, err = strconv.Atoi(get("BUILD_CONCURRENCY", devOrValue(dev, "1", "2"))); err != nil || b.Concurrency < 1 || b.Concurrency > 16 {
-		errs = append(errs, errors.New("GREYSHIP_BUILD_CONCURRENCY must be 1 to 16"))
-	}
-	if b.CPUs, err = strconv.ParseFloat(get("BUILD_CPUS", devOrValue(dev, "2", "3")), 64); err != nil || b.CPUs <= 0 {
-		errs = append(errs, errors.New("GREYSHIP_BUILD_CPUS must be a positive number"))
-	}
+	// Builds run one at a time on an instance and use as much CPU as they like (decisions.md 058); only memory is capped.
 	if b.MemoryMB, err = strconv.Atoi(get("BUILD_MEMORY_MB", devOrValue(dev, "1536", "2048"))); err != nil || b.MemoryMB < 512 {
 		errs = append(errs, errors.New("GREYSHIP_BUILD_MEMORY_MB must be at least 512"))
 	}

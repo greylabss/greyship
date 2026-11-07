@@ -65,7 +65,7 @@ You sign in with an **email and a password**. There are no emailed codes, no Goo
 1. You type your email and password. The API checks a salted PBKDF2 fingerprint of the password (the password itself is never stored), counts wrong tries (8 per email, 30 per address, 15 minutes), and answers the same way for a wrong password and an unknown email.
 2. The API gives your browser a **session cookie**: a long random secret. Only a fingerprint (hash) of it is stored in the database, so even someone reading the database can't use it.
 
-**Forgot your password?** Nobody gets an email. Whoever has access to the server (SSH) runs `greyship-admin reset-password <email>`, which prints a new random password once and signs that account out everywhere. That is the same idea as Coolify's reset command.
+**Forgot your password?** Nobody gets an email. Whoever has access to the server (SSH) runs `greyship-admin password <email>`, which prints a new random password once and signs that account out everywhere. That is the same idea as Coolify's reset command.
 
 **Limits:** the admin can also give each user a memory limit, a CPU limit and a limit on builds at once (Admin > Users > Limits). Before starting an instance for a user, the scheduler adds up what that user's apps already hold. If the new one doesn't fit, the deploy fails with a message that says which limit, and the version that is already live keeps serving. No limit set means no limit.
 
@@ -222,6 +222,8 @@ This is how the programs hand work to each other.
 It puts the user, and the token's team, into the request context for the handler.
 
 **Handlers are thin.** They decode JSON, call a service in another package (`project`, `deploy`, `env`, `github`, …), and turn its errors into HTTP answers. For example, `project.ErrNotFound` becomes 404, `ErrReadOnly` becomes 403 for viewers, and `deploy.ErrBadBinary` becomes 400.
+
+**Custom domains** ([`internal/domains`](../internal/domains/domains.go), [`internal/router/table.go`](../internal/router/table.go)): a person adds `api.example.com` to a service; the API checks the name is allowed and records it, then pings the routers (`NOTIFY routes`) so they reload. The router keeps a small map from each custom name to the service's label, tries it before the usual `<service>-<project>` names, and will only ask Let's Encrypt for a certificate for names in that map, the first time someone visits and only if DNS already points at the server. The Domains page also asks DNS where the name points, so it can say whether the record is right.
 
 **Deleting a project** ([`project.go`](../internal/project/project.go) `Delete`, [`internal/projdel`](../internal/projdel/projdel.go)): the API marks the project as deleting and queues a job in one step, so it vanishes from every screen at once. The builder (it has the storage keys) then tells each running instance to stop and waits for the agents to confirm, because deleting a row first would leave a container nobody can find. When nothing runs, it deletes the project's stored files, then the project itself; the database removes everything attached to it.
 

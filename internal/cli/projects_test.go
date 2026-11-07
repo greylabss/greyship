@@ -19,6 +19,7 @@ type projectAPI struct {
 	existing map[string]bool
 	created  []string
 	deleted  []string // "id:confirm" of each delete request
+	domains  []string // "METHOD hostname/service" of each domains request
 }
 
 func (f *projectAPI) server(t *testing.T) *httptest.Server {
@@ -48,6 +49,20 @@ func (f *projectAPI) server(t *testing.T) *httptest.Server {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.deleted = append(f.deleted, r.PathValue("id")+":"+body.Confirm)
 		w.WriteHeader(http.StatusAccepted)
+	})
+	mux.HandleFunc("GET /v1/projects/id-bot/domains", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"domains":[{"hostname":"api-bot.greyshipapp.tech","service":"api","custom":false},{"hostname":"bot.example.com","service":"api","custom":true,"dns":"unresolved"}]}`))
+	})
+	mux.HandleFunc("POST /v1/projects/id-bot/domains", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Hostname, Service string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.domains = append(f.domains, "POST "+body.Hostname+"/"+body.Service)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"domain":{"hostname":"` + body.Hostname + `","service":"api","custom":true,"dns":"not_pointing"}}`))
+	})
+	mux.HandleFunc("DELETE /v1/projects/id-bot/domains/{hostname}", func(w http.ResponseWriter, r *http.Request) {
+		f.domains = append(f.domains, "DELETE "+r.PathValue("hostname"))
+		w.WriteHeader(http.StatusNoContent)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -227,6 +242,34 @@ func TestProjectsDelete(t *testing.T) {
 				t.Fatalf("err = %v deleted = %v out = %q", err, f.deleted, out)
 			}
 		})
+	}
+}
+
+func TestDomains(t *testing.T) {
+	f := &projectAPI{}
+	srv := f.server(t)
+	dir := t.TempDir()
+	if _, err := writeLink(dir, Link{Team: "haki", Project: "bot", ID: "id-bot"}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runIn(t, srv, dir, "", false, "domains")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ADDRESS", "api-bot.greyshipapp.tech", "default", "bot.example.com", "no DNS record yet"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("list missing %q:\n%s", want, out)
+		}
+	}
+	out, err = runIn(t, srv, dir, "", false, "domains", "add", "bot.example.com", "--service", "api")
+	if err != nil || !strings.Contains(out, "bot.example.com now serves api") || !strings.Contains(out, "CNAME") || f.domains[0] != "POST bot.example.com/api" {
+		t.Fatalf("add: %v %q %v", err, out, f.domains)
+	}
+	if out, err = runIn(t, srv, dir, "", false, "domains", "remove", "bot.example.com"); err != nil || !strings.Contains(out, "removed") || f.domains[1] != "DELETE bot.example.com" {
+		t.Fatalf("remove: %v %q %v", err, out, f.domains)
+	}
+	if _, err := runIn(t, srv, t.TempDir(), "", false, "domains"); err == nil || !strings.Contains(err.Error(), "isn't linked") {
+		t.Fatalf("outside a project folder: %v", err)
 	}
 }
 

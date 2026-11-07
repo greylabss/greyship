@@ -50,7 +50,7 @@ export function SignInForm({ fallbackNext }: { fallbackNext: string }) {
       <Button type="submit" className="h-11" disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
       </Button>
-      <p className="text-center text-12 text-dim">Forgot it? Ask your instance admin, or run greyship-admin reset-password on the server.</p>
+      <p className="text-center text-12 text-dim">Forgot it? Ask your instance admin, or run greyship-admin password on the server.</p>
     </form>
   );
 }

@@ -193,12 +193,12 @@ func TestWebSocketPassesThrough(t *testing.T) {
 }
 
 func TestRedirect(t *testing.T) {
-	h := Redirect("8443", "localhost")
+	h := Redirect("8443", nil, "localhost")
 	rec := do(h, "api-shop.localhost:8081", func(r *http.Request) { r.URL.Path = "/a"; r.URL.RawQuery = "b=1" })
 	if rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != "https://api-shop.localhost:8443/a?b=1" {
 		t.Fatalf("redirect = %d %s", rec.Code, rec.Header().Get("Location"))
 	}
-	if rec := do(Redirect("", "greyshipapp.tech", "greyship.tech"), "evil.com", nil); rec.Code != 404 {
+	if rec := do(Redirect("", nil, "greyshipapp.tech", "greyship.tech"), "evil.com", nil); rec.Code != 404 {
 		t.Fatalf("foreign host redirected: %d", rec.Code)
 	}
 }
@@ -430,5 +430,38 @@ func TestPlatformRoutes(t *testing.T) {
 	}
 	if rec := do(rt, "s3.greyship.tech", nil); rec.Code != 404 {
 		t.Fatalf("an unconfigured platform label = %d, want 404", rec.Code)
+	}
+}
+
+// A custom hostname reaches its service, gets a certificate and is redirected to HTTPS; anything else under no
+// domain we know still gets nothing.
+func TestCustomHostnames(t *testing.T) {
+	addr := upstream(t, "shop")
+	rt := newRouter([]store.RoutingTableRow{row("svc-1", "api-shop", "i1", addr, "running")})
+	rt.Domain = "greyshipapp.tech"
+	rt.Table.SetDomains([]store.RoutingDomainsRow{{Hostname: "Api.Example.com", Subdomain: "api-shop"}})
+
+	for _, host := range []string{"api.example.com", "API.example.com:443", "api.example.com."} {
+		if rec := do(rt, host, nil); rec.Code != 200 || !strings.HasPrefix(rec.Body.String(), "shop host="+host) {
+			t.Errorf("%s = %d %q", host, rec.Code, rec.Body.String())
+		}
+	}
+	if !rt.Serves("api.example.com") || rt.Serves("other.example.com") || rt.Serves("evil.example.com") {
+		t.Fatal("only the custom hostname in the table may get a certificate")
+	}
+	if rec := do(rt, "other.example.com", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("a hostname that isn't in the table = %d", rec.Code)
+	}
+	if rec := do(Redirect("", rt.Table, "greyshipapp.tech"), "api.example.com", nil); rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != "https://api.example.com/" {
+		t.Fatalf("custom host redirect = %d %s", rec.Code, rec.Header().Get("Location"))
+	}
+	if rec := do(Redirect("", rt.Table, "greyshipapp.tech"), "other.example.com", nil); rec.Code != 404 {
+		t.Fatalf("a foreign host was redirected: %d", rec.Code)
+	}
+
+	// Removing it takes effect on the next reload.
+	rt.Table.SetDomains(nil)
+	if rec := do(rt, "api.example.com", nil); rec.Code != http.StatusNotFound || rt.Serves("api.example.com") {
+		t.Fatalf("a removed hostname still routes: %d", rec.Code)
 	}
 }

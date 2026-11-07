@@ -241,6 +241,11 @@ export async function githubApp(team: string): Promise<GitHubAppStatus> {
   return json<GitHubAppStatus>(`/v1/teams/${encodeURIComponent(team)}/github/app`);
 }
 
+// projectDomains are a project's addresses: each web service's default one and its custom domains, with their DNS state.
+export async function projectDomains(projectId: string): Promise<{ hostname: string; service: string; custom: boolean; dns?: string }[]> {
+  return (await json<{ domains: { hostname: string; service: string; custom: boolean; dns?: string }[] }>(`/v1/projects/${projectId}/domains`)).domains;
+}
+
 export async function githubState(team: string): Promise<GitHubState> {
   const t = encodeURIComponent(team);
   let installURL: string;

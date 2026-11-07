@@ -93,13 +93,18 @@ func TestReadBinaries(t *testing.T) {
 }
 
 func TestVetSharesTheBuildCache(t *testing.T) {
-	s := &Sandbox{Network: "gs-build", Proxy: "http://modproxy:8080", ProxyHost: "modproxy:172.30.0.2", CPUs: 4, MemoryMB: 2560}
+	s := &Sandbox{Network: "gs-build", Proxy: "http://modproxy:8080", ProxyHost: "modproxy:172.30.0.2", MemoryMB: 2560}
 	args := s.args(spec(Target{"api", "./cmd/api"}))
 	if !slices.Contains(args, "GOFLAGS=-mod=mod -modcacherw -trimpath") {
 		t.Fatal("-trimpath must be in GOFLAGS so go vet reuses what go build compiled")
 	}
-	if !slices.Contains(args, "--cpus=4.0") || !slices.Contains(args, "--memory=2560m") {
-		t.Fatalf("limits not applied: %v", args)
+	if !slices.Contains(args, "--memory=2560m") {
+		t.Fatalf("memory limit not applied: %v", args)
+	}
+	for _, a := range args {
+		if strings.HasPrefix(a, "--cpus") || strings.HasPrefix(a, "--cpu-") {
+			t.Fatalf("a build must not be capped in CPU, got %s", a)
+		}
 	}
 	if strings.Index(script, "go build") > strings.Index(script, "go vet") {
 		t.Fatal("build before vet: compile errors show first and vet reuses the build's work")

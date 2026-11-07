@@ -45,6 +45,7 @@ type Options struct {
 	Notifications Notifications
 	Admin         Admin
 	Accounts      Accounts
+	Domains       Domains
 	Mail          MailSettings
 	// PushKey is the VAPID public key for browser push; empty when push isn't configured.
 	PushKey      string
@@ -123,6 +124,11 @@ func New(o Options) *Server {
 	s.mux.Handle("GET /v1/projects/{id}/services", s.requireUser(http.HandlerFunc(s.listServices)))
 	s.mux.Handle("PATCH /v1/projects/{id}", s.requireUser(http.HandlerFunc(s.renameProject)))
 	s.mux.Handle("DELETE /v1/projects/{id}", s.requireUser(http.HandlerFunc(s.deleteProject)))
+	if o.Domains != nil {
+		s.mux.Handle("GET /v1/projects/{id}/domains", s.requireUser(http.HandlerFunc(s.listDomains)))
+		s.mux.Handle("POST /v1/projects/{id}/domains", s.requireUser(http.HandlerFunc(s.addDomain)))
+		s.mux.Handle("DELETE /v1/projects/{id}/domains/{hostname}", s.requireUser(http.HandlerFunc(s.removeDomain)))
+	}
 
 	// Build machines authenticate with a per-build token, not a user (decisions.md 039).
 	// Each team creates its own GitHub App (decisions.md 055); until it has, these answer 404 github_off.
