@@ -55,4 +55,4 @@ The service logs are in `tmp/logs/`, if anything misbehaves.
 
 ## On the server
 
-See [vps.md](vps.md): rent the server, run one script on it, release from your Mac, and sign in. After that, `grey deploy` gives a real `https://<service>-<project>.greyship.tech` URL.
+Install Greyship on a server with `deploy/install/install.sh` (see `docsweb/content/docs/self-hosting.mdx`), install the CLI from the server's `/install` address, run `grey login`, and `grey deploy` gives a real `https://<service>-<project>.<your apps domain>` URL.

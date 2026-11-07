@@ -24,6 +24,7 @@ import (
 	"greyship.tech/internal/deploy"
 	"greyship.tech/internal/github"
 	"greyship.tech/internal/objstore"
+	"greyship.tech/internal/projdel"
 	"greyship.tech/internal/project"
 	"greyship.tech/internal/secrets"
 )
@@ -141,6 +142,9 @@ func run(logger *slog.Logger) error {
 		return err
 	}
 	runGitHub(gctx, g, pool, storage, keys, logger)
+	deleter := &projdel.Deleter{Pool: pool, Objects: storage, Logger: logger, Wait: time.Minute, Poll: time.Second}
+	deletes := &bus.Worker{Queue: bus.NewQueue(pool), Pool: pool, ID: bus.WorkerID(), Kind: bus.ProjectDelete, Lease: 3 * time.Minute, Poll: 5 * time.Second, Logger: logger}
+	g.Go(func() error { return deletes.Run(gctx, deleter.Handle) })
 	// Checking binaries built on developers' machines is quick and never waits behind a compile.
 	verifier := &bus.Worker{
 		Queue: bus.NewQueue(pool), Pool: pool, ID: bus.WorkerID(), Kind: bus.BuildVerify,

@@ -2,7 +2,8 @@
 # Installs Greyship on this server, or upgrades it (decisions.md 050). Run as root on a fresh Ubuntu 22.04/24.04 or
 # Debian 12 server (x86_64 or arm64, 4 GB RAM or more, ports 80 and 443 free):
 #
-#   curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh
+#   curl -fsSL https://greyship.tech/install | sudo sh
+# (that address redirects to this file in github.com/greylabss/greyship, deploy/install/install.sh)
 #
 # It installs Docker, gVisor, Postgres, storage and Node, downloads the release, writes every secret into
 # /etc/greyship (root-only), and sets Greyship up as systemd services. Running it again upgrades in place and keeps
@@ -21,6 +22,10 @@
 #   --version v0.1.0                a release other than the latest
 #   --yes                           don't ask anything
 set -eu
+# One locale, so apt and perl don't warn about the one the person's ssh session brought along.
+LC_ALL=C.UTF-8
+LANG=C.UTF-8
+export LC_ALL LANG
 
 REPO=${GREYSHIP_REPO:-greylabss/greyship}
 VERSION=${GREYSHIP_VERSION:-latest}
@@ -101,7 +106,8 @@ check_system() {
 	if ! systemctl is-active --quiet greyship-router 2>/dev/null; then
 		for port in 80 443; do
 			if ss -ltn "( sport = :$port )" 2>/dev/null | grep -q LISTEN; then
-				fail "something already listens on port $port; Greyship's router needs ports 80 and 443"
+				who=$(ss -ltnpH "( sport = :$port )" 2>/dev/null | sed -n 's/.*users:(("\([^"]*\)".*/\1/p' | head -1)
+				fail "${who:-something} already listens on port $port, and Greyship's router needs ports 80 and 443. Stop it (or move it to other ports) and run this again, or use a server that only runs Greyship."
 			fi
 		done
 	fi
@@ -390,6 +396,9 @@ install_files() {
 	mv "$LIB/dashboard.new" "$LIB/dashboard"
 	chown -R root:root "$LIB/dashboard"
 	chmod -R a+rX "$LIB/dashboard" "$LIB/node"
+	# Next.js caches pages it renders for unknown paths (scanners hit those). The service can't write under /usr, so the
+	# cache goes to its runtime folder (/run, emptied on every restart), which keeps it small.
+	ln -sfn /run/greyship-dashboard "$LIB/dashboard/.next/server/route-cache"
 	printf '%s\n' "$VERSION" >"$LIB/VERSION"
 	systemctl daemon-reload
 }

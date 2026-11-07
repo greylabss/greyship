@@ -13,7 +13,7 @@ import (
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (team_id, name, slug) VALUES ($1, $2, $3)
 ON CONFLICT (team_id, slug) DO NOTHING
-RETURNING id, team_id, name, slug, created_at
+RETURNING id, team_id, name, slug, created_at, deleting_at
 `
 
 type CreateProjectParams struct {
@@ -31,6 +31,34 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.Name,
 		&i.Slug,
 		&i.CreatedAt,
+		&i.DeletingAt,
+	)
+	return i, err
+}
+
+const deleteProject = `-- name: DeleteProject :exec
+DELETE FROM projects WHERE id = $1 AND deleting_at IS NOT NULL
+`
+
+func (q *Queries) DeleteProject(ctx context.Context, id string) error {
+	_, err := q.db.Exec(ctx, deleteProject, id)
+	return err
+}
+
+const getDeletingProject = `-- name: GetDeletingProject :one
+SELECT id, team_id, name, slug, created_at, deleting_at FROM projects WHERE id = $1 AND deleting_at IS NOT NULL
+`
+
+func (q *Queries) GetDeletingProject(ctx context.Context, id string) (Project, error) {
+	row := q.db.QueryRow(ctx, getDeletingProject, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.TeamID,
+		&i.Name,
+		&i.Slug,
+		&i.CreatedAt,
+		&i.DeletingAt,
 	)
 	return i, err
 }
@@ -75,7 +103,7 @@ func (q *Queries) GetMembershipByTeamID(ctx context.Context, arg GetMembershipBy
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, team_id, name, slug, created_at FROM projects WHERE id = $1
+SELECT id, team_id, name, slug, created_at, deleting_at FROM projects WHERE id = $1 AND deleting_at IS NULL
 `
 
 func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
@@ -87,12 +115,13 @@ func (q *Queries) GetProject(ctx context.Context, id string) (Project, error) {
 		&i.Name,
 		&i.Slug,
 		&i.CreatedAt,
+		&i.DeletingAt,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT id, team_id, name, slug, created_at FROM projects WHERE team_id = $1 AND slug = $2
+SELECT id, team_id, name, slug, created_at, deleting_at FROM projects WHERE team_id = $1 AND slug = $2 AND deleting_at IS NULL
 `
 
 type GetProjectBySlugParams struct {
@@ -109,12 +138,13 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, arg GetProjectBySlugPara
 		&i.Name,
 		&i.Slug,
 		&i.CreatedAt,
+		&i.DeletingAt,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, team_id, name, slug, created_at FROM projects WHERE team_id = $1 ORDER BY created_at DESC
+SELECT id, team_id, name, slug, created_at, deleting_at FROM projects WHERE team_id = $1 AND deleting_at IS NULL ORDER BY created_at DESC
 `
 
 func (q *Queries) ListProjects(ctx context.Context, teamID string) ([]Project, error) {
@@ -132,6 +162,7 @@ func (q *Queries) ListProjects(ctx context.Context, teamID string) ([]Project, e
 			&i.Name,
 			&i.Slug,
 			&i.CreatedAt,
+			&i.DeletingAt,
 		); err != nil {
 			return nil, err
 		}
@@ -143,8 +174,88 @@ func (q *Queries) ListProjects(ctx context.Context, teamID string) ([]Project, e
 	return items, nil
 }
 
+const markProjectDeleting = `-- name: MarkProjectDeleting :execrows
+UPDATE projects SET deleting_at = now() WHERE id = $1 AND deleting_at IS NULL
+`
+
+func (q *Queries) MarkProjectDeleting(ctx context.Context, id string) (int64, error) {
+	result, err := q.db.Exec(ctx, markProjectDeleting, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const projectLiveInstances = `-- name: ProjectLiveInstances :many
+SELECT i.id, i.service_id, i.artifact_id, i.deployment_id, i.node_id, i.memory_mb, i.state, i.addr, i.error, i.started_at, i.stopped_at, i.created_at, i.paused_at FROM instances i JOIN services s ON s.id = i.service_id
+WHERE s.project_id = $1 AND i.state IN ('starting', 'running', 'paused', 'stopping')
+`
+
+// Instances of a project that still hold a container: up, on their way up or down, or paused.
+func (q *Queries) ProjectLiveInstances(ctx context.Context, projectID string) ([]Instance, error) {
+	rows, err := q.db.Query(ctx, projectLiveInstances, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Instance
+	for rows.Next() {
+		var i Instance
+		if err := rows.Scan(
+			&i.ID,
+			&i.ServiceID,
+			&i.ArtifactID,
+			&i.DeploymentID,
+			&i.NodeID,
+			&i.MemoryMb,
+			&i.State,
+			&i.Addr,
+			&i.Error,
+			&i.StartedAt,
+			&i.StoppedAt,
+			&i.CreatedAt,
+			&i.PausedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const projectObjectKeys = `-- name: ProjectObjectKeys :many
+SELECT d.source_key::text AS key FROM deployments d WHERE d.project_id = $1 AND d.source_key IS NOT NULL
+UNION SELECT d.files_key::text FROM deployments d WHERE d.project_id = $1 AND d.files_key IS NOT NULL
+UNION SELECT a.object_key::text FROM artifacts a JOIN deployments d ON d.id = a.deployment_id WHERE d.project_id = $1
+UNION SELECT u.object_key::text FROM uploaded_binaries u JOIN deployments d ON d.id = u.deployment_id WHERE d.project_id = $1
+`
+
+// Every stored object a project owns: sources, files bundles, built binaries and uploaded binaries.
+func (q *Queries) ProjectObjectKeys(ctx context.Context, projectID string) ([]string, error) {
+	rows, err := q.db.Query(ctx, projectObjectKeys, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		items = append(items, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const renameProject = `-- name: RenameProject :one
-UPDATE projects SET name = $2, slug = $3 WHERE id = $1 RETURNING id, team_id, name, slug, created_at
+UPDATE projects SET name = $2, slug = $3 WHERE id = $1 RETURNING id, team_id, name, slug, created_at, deleting_at
 `
 
 type RenameProjectParams struct {
@@ -162,6 +273,7 @@ func (q *Queries) RenameProject(ctx context.Context, arg RenameProjectParams) (P
 		&i.Name,
 		&i.Slug,
 		&i.CreatedAt,
+		&i.DeletingAt,
 	)
 	return i, err
 }

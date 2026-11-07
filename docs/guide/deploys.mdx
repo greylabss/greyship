@@ -87,3 +87,11 @@ whether to deploy to the existing project.
 | Server build time | 10 minutes |
 
 More in [Limits](/limits).
+
+## Rename or delete a project
+
+Open the project in the dashboard and choose **Settings**. You can rename it there (its services' addresses follow the
+new name), or delete it: type the project's name to confirm and it disappears at once. Its apps stop and its
+deployments, env vars, logs and stored files are removed in the background. This can't be undone.
+
+From the terminal: `grey projects delete <name>` asks you to type the name too, or takes `--yes` in scripts.

@@ -20,7 +20,7 @@ SELECT * FROM project_repos WHERE project_id = $1;
 
 -- name: ProjectsForPush :many
 -- The projects a push deploys: those connected to this repo and branch.
-SELECT r.*, p.team_id FROM project_repos r JOIN projects p ON p.id = r.project_id
+SELECT r.*, p.team_id FROM project_repos r JOIN projects p ON p.id = r.project_id AND p.deleting_at IS NULL
 WHERE r.repo_id = $1 AND r.branch = $2 AND r.installation_id IS NOT NULL;
 
 -- name: CreateGithubDeployment :one

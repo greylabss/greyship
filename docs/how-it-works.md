@@ -165,7 +165,7 @@ The images Fly boots are built by `make build-images`: one per Go version (1.24â
 - **The VPS holds only what can be lost or rebuilt:** Postgres's data (backed up nightly to R2), caches, and the configuration in `/etc/greyship`, which you back up yourself.
 - **R2 holds:** sources (`sources/<project>/<deployment>.tar.gz`), binaries (`artifacts/<deployment>/<service>`, and `binaries/<project>/<sha>.gz` for laptop builds), and `backups/postgres/<date>.dump`.
 - **Nobody gets permanent storage keys except our own services.** The CLI, build machines and agents get links that expire.
-- Services are managed by systemd and restart on their own. `deploy/vps/release.sh grey` ships new code. `docs/server.md` is the server's manual.
+- Services are managed by systemd and restart on their own. `greyship-admin upgrade` ships a new release. `docs/server.md` is the server's manual.
 
 ---
 
@@ -223,6 +223,8 @@ It puts the user, and the token's team, into the request context for the handler
 
 **Handlers are thin.** They decode JSON, call a service in another package (`project`, `deploy`, `env`, `github`, â€¦), and turn its errors into HTTP answers. For example, `project.ErrNotFound` becomes 404, `ErrReadOnly` becomes 403 for viewers, and `deploy.ErrBadBinary` becomes 400.
 
+**Deleting a project** ([`project.go`](../internal/project/project.go) `Delete`, [`internal/projdel`](../internal/projdel/projdel.go)): the API marks the project as deleting and queues a job in one step, so it vanishes from every screen at once. The builder (it has the storage keys) then tells each running instance to stop and waits for the agents to confirm, because deleting a row first would leave a container nobody can find. When nothing runs, it deletes the project's stored files, then the project itself; the database removes everything attached to it.
+
 ## 2.5 Signing in, in code (`internal/auth`)
 
 - **Password sign-in** ([`accounts.go`](../internal/auth/accounts.go)): `LoginPassword` counts recent failures per email and per IP (8 and 30 in 15 minutes) and refuses with a rate-limit error past them; it hashes a dummy password for unknown emails so timing doesn't show which exist; on success it clears the failures and creates a session. Hashes look like `pbkdf2-sha256$600000$salt$hash`, so the cost can change later.
@@ -237,7 +239,7 @@ It puts the user, and the token's team, into the request context for the handler
 
 ## 2.6 `grey deploy`, in code (`internal/cli`, `internal/deploy`)
 
-The CLI is in [`internal/cli`](../internal/cli); `cmd/greyship/main.go` just runs it. People install it with `curl -fsSL https://greyship.tech/install | sh`: the script ([`web/public/install`](../web/public/install)) downloads the right build from the public repo `greylabss/greyship`, checks its sha256 and installs it. [`deploy/open-source/release.sh`](../deploy/open-source/release.sh) `vX.Y.Z` builds and publishes a release there: server, dashboard and CLI together (decisions.md 050).
+The CLI is in [`internal/cli`](../internal/cli); `cmd/greyship/main.go` just runs it. People install it with `curl -fsSL https://greyship.tech/cli/install | sh`: the script ([`web/public/install`](../web/public/install)) downloads the right build from the public repo `greylabss/greyship`, checks its sha256 and installs it. [`deploy/open-source/release.sh`](../deploy/open-source/release.sh) `vX.Y.Z` builds and publishes a release there: server, dashboard and CLI together (decisions.md 050).
 1. **[`deploy.go`](../internal/cli/deploy.go) `deploy()`**:
    - finds the module root and `ensureProject` (reads or creates the link file);
    - runs **`detect.Detect`** ([`internal/detect`](../internal/detect)) on the folder. Detection parses Go files with the standard `go/parser`, walks from each `main()` through the module's own packages, and recognises known server starts by import path. It never runs code. [`reads.go`](../internal/detect/reads.go) also looks for repo paths the code opens at runtime (`os.ReadFile("scripts/install.sh")`) that `greyship.toml`'s `files` doesn't ship, and turns them into warnings.

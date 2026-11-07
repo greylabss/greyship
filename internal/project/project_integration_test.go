@@ -129,3 +129,63 @@ func TestProjects(t *testing.T) {
 		t.Fatalf("rename onto a taken slug err = %v, want TakenError", err)
 	}
 }
+
+// A deleted project disappears at once and a project.delete job finishes the work; only a member who can write may
+// ask, and only with the project's slug.
+func TestDeleteProject(t *testing.T) {
+	ctx := context.Background()
+	pool := testdb.New(t)
+	q := store.New(pool)
+	svc := project.NewService(pool)
+	acme, other := newTeam(t, q, "acme"), newTeam(t, q, "other")
+	owner := addMember(t, q, "owner@acme.test", acme, "owner")
+	viewer := addMember(t, q, "viewer@acme.test", acme, "viewer")
+	outsider := addMember(t, q, "owner@other.test", other, "owner")
+	asOwner := project.Caller{UserID: owner.userID}
+
+	p, err := svc.Create(ctx, asOwner, "acme", "Acme API")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		who     project.Caller
+		confirm string
+		want    error
+	}{
+		"viewer":             {project.Caller{UserID: viewer.userID}, p.Slug, project.ErrReadOnly},
+		"outsider":           {project.Caller{UserID: outsider.userID}, p.Slug, project.ErrNotFound},
+		"another team token": {project.Caller{UserID: owner.userID, TokenTeamID: other}, p.Slug, project.ErrWrongTeam},
+		"wrong slug":         {asOwner, "acme-apo", project.ErrConfirm},
+		"not a project":      {asOwner, "x", project.ErrNotFound},
+	} {
+		id := p.ID
+		if name == "not a project" {
+			id = "00000000-0000-4000-8000-000000000000"
+		}
+		if err := svc.Delete(ctx, tc.who, id, tc.confirm); !errors.Is(err, tc.want) {
+			t.Errorf("%s: err = %v, want %v", name, err, tc.want)
+		}
+	}
+	var jobs int
+	_ = pool.QueryRow(ctx, "SELECT count(*) FROM jobs WHERE kind = 'project.delete'").Scan(&jobs)
+	if jobs != 0 {
+		t.Fatalf("a refused delete queued %d jobs", jobs)
+	}
+
+	if err := svc.Delete(ctx, asOwner, p.ID, p.Slug); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Get(ctx, asOwner, p.ID); !errors.Is(err, project.ErrNotFound) {
+		t.Fatalf("a deleted project still loads: %v", err)
+	}
+	if list, _ := svc.List(ctx, asOwner, "acme"); len(list) != 0 {
+		t.Fatalf("a deleted project is still listed: %+v", list)
+	}
+	_ = pool.QueryRow(ctx, "SELECT count(*) FROM jobs WHERE kind = 'project.delete' AND payload->>'project_id' = $1", p.ID).Scan(&jobs)
+	if jobs != 1 {
+		t.Fatalf("delete jobs = %d, want 1", jobs)
+	}
+	if err := svc.Delete(ctx, asOwner, p.ID, p.Slug); !errors.Is(err, project.ErrNotFound) {
+		t.Fatalf("deleting twice = %v, want ErrNotFound", err)
+	}
+}

@@ -106,6 +106,7 @@ SELECT pg_notify('routes', '');
 SELECT s.id AS service_id, s.subdomain::text AS subdomain, s.concurrency, s.max_instances, s.grace_seconds,
        i.id AS instance_id, i.addr, i.node_id, i.state AS instance_state
 FROM services s
+JOIN projects p ON p.id = s.project_id AND p.deleting_at IS NULL
 JOIN releases r ON r.project_id = s.project_id AND r.env = 'production'
 LEFT JOIN instances i ON i.service_id = s.id AND i.deployment_id = r.deployment_id
      AND i.state IN ('running', 'paused') AND i.addr IS NOT NULL

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs grey, the Greyship CLI, on macOS or Linux:
 #
-#   curl -fsSL https://greyship.tech/install | sh
+#   curl -fsSL https://greyship.tech/cli/install | sh
 #
 # It downloads the latest release from https://github.com/greylabss/greyship, checks its sha256 against the
 # release's checksums.txt, and puts grey (plus the aliases gray and greyship) in /usr/local/bin, or in

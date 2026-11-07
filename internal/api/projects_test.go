@@ -49,6 +49,11 @@ func (f *fakeProjects) Rename(_ context.Context, c project.Caller, _, name strin
 	return f.result(c, "haki", name)
 }
 
+func (f *fakeProjects) Delete(_ context.Context, c project.Caller, _, _ string) error {
+	f.caller = c
+	return f.err
+}
+
 func TestProjectEndpoints(t *testing.T) {
 	taken := &project.TakenError{Existing: project.Project{Project: store.Project{ID: "p0", Slug: "acme-api"}, TeamSlug: "haki"}}
 	tests := []struct {
@@ -71,6 +76,12 @@ func TestProjectEndpoints(t *testing.T) {
 		{"wrong team token", project.ErrWrongTeam, "GET", "/v1/projects/p1", "", true, http.StatusForbidden, "wrong_team"},
 		{"viewer", project.ErrReadOnly, "PATCH", "/v1/projects/p1", `{"name":"New"}`, true, http.StatusForbidden, "read_only"},
 		{"rename", nil, "PATCH", "/v1/projects/p1", `{"name":"New"}`, true, http.StatusOK, `"name":"New"`},
+		{"delete", nil, "DELETE", "/v1/projects/p1", `{"confirm":"acme-api"}`, true, http.StatusAccepted, ""},
+		{"delete with the wrong confirmation", project.ErrConfirm, "DELETE", "/v1/projects/p1", `{"confirm":"nope"}`, true, http.StatusBadRequest, "confirm_mismatch"},
+		{"viewer can't delete", project.ErrReadOnly, "DELETE", "/v1/projects/p1", `{"confirm":"acme-api"}`, true, http.StatusForbidden, "read_only"},
+		{"outsider can't delete", project.ErrNotFound, "DELETE", "/v1/projects/p9", `{"confirm":"x"}`, true, http.StatusNotFound, "not_found"},
+		{"another team's token can't delete", project.ErrWrongTeam, "DELETE", "/v1/projects/p1", `{"confirm":"acme-api"}`, true, http.StatusForbidden, "wrong_team"},
+		{"delete needs auth", nil, "DELETE", "/v1/projects/p1", `{"confirm":"acme-api"}`, false, http.StatusUnauthorized, "unauthenticated"},
 		{"get", nil, "GET", "/v1/projects/p1", "", true, http.StatusOK, `"id":"p1"`},
 		{"by slug", nil, "GET", "/v1/teams/haki/projects/acme-api", "", true, http.StatusOK, `"slug":"acme-api"`},
 		{"by slug, not a member", project.ErrNotFound, "GET", "/v1/teams/other/projects/acme-api", "", true, http.StatusNotFound, "not_found"},

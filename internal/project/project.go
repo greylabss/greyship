@@ -28,6 +28,7 @@ var (
 	ErrNotFound  = errors.New("project not found")
 	ErrWrongTeam = errors.New("token belongs to a different team")
 	ErrReadOnly  = errors.New("viewers can't change projects")
+	ErrConfirm   = errors.New("the confirmation doesn't match the project's slug")
 )
 
 // NameError explains why a project name can't be used; Reason is written for people.
@@ -185,6 +186,41 @@ func (s *Service) Rename(ctx context.Context, c Caller, id, rawName string) (Pro
 		return Project{}, fmt.Errorf("rename project %s: %w", id, err)
 	}
 	return Project{Project: renamed, TeamSlug: p.TeamSlug}, nil
+}
+
+// Delete removes a project. It disappears at once, and a project.delete job stops its instances and then deletes it
+// and what it stored (decisions.md 056). confirm must be the project's slug, so a stray request can't do it.
+func (s *Service) Delete(ctx context.Context, c Caller, id, confirm string) error {
+	p, err := s.Access(ctx, c, id, true)
+	if err != nil {
+		return err
+	}
+	if confirm != p.Slug {
+		return ErrConfirm
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := store.New(tx)
+	n, err := q.MarkProjectDeleting(ctx, p.ID)
+	if err != nil {
+		return fmt.Errorf("mark project %s deleting: %w", p.ID, err)
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	if _, err := bus.Enqueue(ctx, q, bus.ProjectDelete, map[string]string{"project_id": p.ID}); err != nil {
+		return err
+	}
+	if err := q.NotifyRoutes(ctx); err != nil {
+		return fmt.Errorf("notify routers: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit delete of project %s: %w", p.ID, err)
+	}
+	return nil
 }
 
 // Member loads a team the caller belongs to; with write, viewers get ErrReadOnly.

@@ -122,6 +122,7 @@ func New(o Options) *Server {
 	s.mux.Handle("GET /v1/teams/{team}/projects/{slug}", s.requireUser(http.HandlerFunc(s.projectBySlug)))
 	s.mux.Handle("GET /v1/projects/{id}/services", s.requireUser(http.HandlerFunc(s.listServices)))
 	s.mux.Handle("PATCH /v1/projects/{id}", s.requireUser(http.HandlerFunc(s.renameProject)))
+	s.mux.Handle("DELETE /v1/projects/{id}", s.requireUser(http.HandlerFunc(s.deleteProject)))
 
 	// Build machines authenticate with a per-build token, not a user (decisions.md 039).
 	// Each team creates its own GitHub App (decisions.md 055); until it has, these answer 404 github_off.

@@ -241,11 +241,12 @@ type PasswordFailure struct {
 }
 
 type Project struct {
-	ID        string
-	TeamID    string
-	Name      string
-	Slug      string
-	CreatedAt time.Time
+	ID         string
+	TeamID     string
+	Name       string
+	Slug       string
+	CreatedAt  time.Time
+	DeletingAt *time.Time
 }
 
 type ProjectKey struct {

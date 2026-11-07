@@ -91,7 +91,7 @@ export function CommandMenu({ projects }: { projects: { slug: string; url: strin
             <icons.copy />
             Copy <code className="font-mono text-13">grey deploy</code>
           </CommandItem>
-          <CommandItem value="copy install cli curl" onSelect={() => copy("curl -fsSL greyship.tech/install | sh")}>
+          <CommandItem value="copy install cli curl" onSelect={() => copy("curl -fsSL greyship.tech/cli/install | sh")}>
             <icons.copy />
             Copy CLI install command
           </CommandItem>

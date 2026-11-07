@@ -241,7 +241,7 @@ func (q *Queries) ProjectRepo(ctx context.Context, projectID string) (ProjectRep
 }
 
 const projectsForPush = `-- name: ProjectsForPush :many
-SELECT r.project_id, r.installation_id, r.repo_id, r.full_name, r.branch, r.created_at, p.team_id FROM project_repos r JOIN projects p ON p.id = r.project_id
+SELECT r.project_id, r.installation_id, r.repo_id, r.full_name, r.branch, r.created_at, p.team_id FROM project_repos r JOIN projects p ON p.id = r.project_id AND p.deleting_at IS NULL
 WHERE r.repo_id = $1 AND r.branch = $2 AND r.installation_id IS NOT NULL
 `
 

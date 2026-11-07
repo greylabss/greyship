@@ -80,7 +80,7 @@ Uploaded 3 binaries (7.8 MB)
 Install Greyship on a fresh Ubuntu or Debian server, as root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh
+curl -fsSL https://greyship.tech/install | sudo sh
 ```
 
 That's all: **no domain needed**. It installs Docker, gVisor, Postgres and everything else, then tells you to open

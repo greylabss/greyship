@@ -181,6 +181,27 @@ func (s *Store) Put(ctx context.Context, key string, body io.Reader, size int64)
 	return nil
 }
 
+// Delete removes key. A key that is already gone is not an error.
+func (s *Store) Delete(ctx context.Context, key string) error {
+	u, err := s.presign(http.MethodDelete, key, nil, 15*time.Minute)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	if err != nil {
+		return fmt.Errorf("delete %s: %w", key, err)
+	}
+	resp, err := s.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("delete %s: %w", key, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("delete %s: storage answered %d", key, resp.StatusCode)
+	}
+	return nil
+}
+
 // Get downloads key, refusing objects larger than limit bytes.
 func (s *Store) Get(ctx context.Context, key string, limit int64) ([]byte, error) {
 	u, err := s.PresignGet(key, 15*time.Minute)

@@ -18,13 +18,24 @@ Keep backups of anything that matters.
 - **4 GB of RAM or more** (2 GB runs it, but builds on the server need room). The apps you deploy share what's left.
 - **Ports 80, 443 and 8000** free. That is all you need to start: **no domain is required**.
 
+<Callout type="warn" title="Run it on its own server, or free these ports first">
+Greyship's router takes ports **80 and 443** for itself, because every app and the dashboard are served through it. If
+something else on the server already uses them (nginx, Apache, Caddy, Traefik, Coolify, another panel), the installer
+stops and tells you which program it is. Two programs can't share a port, and Greyship also runs its own firewall
+rules and Docker networks, so the safest setup is a server that only runs Greyship. If you must share, stop the other
+program, or put it on different ports, before installing, and expect its sites to stop answering on 80 and 443.
+</Callout>
+
 ## Install
 
 On the server, as root:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/greylabss/greyship/main/deploy/install/install.sh | sudo sh
+curl -fsSL https://greyship.tech/install | sudo sh
 ```
+
+(`https://greyship.tech/install` redirects to the installer in the repository, `deploy/install/install.sh`; you can fetch that file directly from
+github.com/greylabss/greyship if you prefer.)
 
 It installs Docker, [gVisor](https://gvisor.dev), Postgres, an S3-compatible store
 ([Garage](https://garagehq.deuxfleurs.fr)) and Node.js, downloads the release and checks its checksums, generates every
@@ -92,7 +103,7 @@ again afterwards (sessions don't carry over). You can also give the installer th
 On your computer:
 
 ```sh
-curl -fsSL https://greyship.tech/install | sh
+curl -fsSL https://greyship.tech/cli/install | sh
 grey login https://greyship.example.com
 cd my-go-project
 grey deploy

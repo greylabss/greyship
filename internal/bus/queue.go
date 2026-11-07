@@ -25,7 +25,8 @@ const (
 	DeploymentRelease = "deployment.release"
 	ScaleUp           = "service.scale_up"
 	EnvChanged        = "env.changed"
-	Notify            = "notify" // a deploy ended or a project was made; see internal/notify
+	Notify            = "notify"         // a deploy ended or a project was made; see internal/notify
+	ProjectDelete     = "project.delete" // stops a deleted project's instances, then removes it and its stored objects
 )
 
 // Notification event kinds, as Notify payloads carry them.

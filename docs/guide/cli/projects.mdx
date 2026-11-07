@@ -13,3 +13,17 @@ grey projects
 
 Also: `project`.
 
+### `grey projects delete`
+
+Stops the project's apps and deletes it with its deployments, env vars, logs and stored files. This can't be undone. You are asked to type the project's slug first; --yes skips that for scripts.
+
+```text
+grey projects delete <slug> [flags]
+```
+
+Flags:
+
+```text
+      --yes   don't ask for confirmation
+```
+

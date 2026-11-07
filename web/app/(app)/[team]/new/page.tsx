@@ -50,7 +50,7 @@ async function Body({ params, searchParams }: { params: PageProps<"/[team]/new">
             <section className="flex flex-col gap-3 rounded-panel border border-border p-4">
               <h2 className="font-semibold">Prefer the terminal?</h2>
               <div className="flex flex-col gap-1">
-                <CommandHint command="curl -fsSL greyship.tech/install | sh" />
+                <CommandHint command="curl -fsSL greyship.tech/cli/install | sh" />
                 <CommandHint command="grey login" />
                 <CommandHint command="grey deploy" />
               </div>

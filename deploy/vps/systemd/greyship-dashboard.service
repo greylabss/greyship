@@ -16,6 +16,7 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/var/lib/greyship
+RuntimeDirectory=greyship-dashboard
 MemoryMax=768M
 
 [Install]

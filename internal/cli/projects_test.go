@@ -18,6 +18,7 @@ import (
 type projectAPI struct {
 	existing map[string]bool
 	created  []string
+	deleted  []string // "id:confirm" of each delete request
 }
 
 func (f *projectAPI) server(t *testing.T) *httptest.Server {
@@ -41,6 +42,12 @@ func (f *projectAPI) server(t *testing.T) *httptest.Server {
 	})
 	mux.HandleFunc("GET /v1/teams/haki/projects", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"projects":[{"id":"id-acme-api","team":"haki","name":"Acme API","slug":"acme-api","created_at":"2026-10-26T10:00:00Z"},{"id":"id-bot","team":"haki","name":"bot","slug":"bot","created_at":"2026-10-20T10:00:00Z"}]}`))
+	})
+	mux.HandleFunc("DELETE /v1/projects/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var body struct{ Confirm string }
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		f.deleted = append(f.deleted, r.PathValue("id")+":"+body.Confirm)
+		w.WriteHeader(http.StatusAccepted)
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -184,6 +191,42 @@ func TestProjects(t *testing.T) {
 	var list []project
 	if err != nil || json.Unmarshal([]byte(out), &list) != nil || len(list) != 2 {
 		t.Fatalf("--json: %v %q", err, out)
+	}
+}
+
+func TestProjectsDelete(t *testing.T) {
+	tests := []struct {
+		name        string
+		stdin       string
+		interactive bool
+		args        []string
+		wantErr     string
+		wantDeleted string
+	}{
+		{name: "--yes deletes", args: []string{"projects", "delete", "bot", "--yes"}, wantDeleted: "id-bot:bot"},
+		{name: "typing the slug deletes", stdin: "bot\n", interactive: true, args: []string{"projects", "delete", "bot"}, wantDeleted: "id-bot:bot"},
+		{name: "typing something else doesn't", stdin: "yes\n", interactive: true, args: []string{"projects", "delete", "bot"}, wantErr: "not confirmed"},
+		{name: "no terminal and no --yes doesn't", args: []string{"projects", "delete", "bot"}, wantErr: "--yes"},
+		{name: "an unknown project", args: []string{"projects", "delete", "nope", "--yes"}, wantErr: `no project "nope"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &projectAPI{}
+			srv := f.server(t)
+			out, err := runIn(t, srv, t.TempDir(), tt.stdin, tt.interactive, tt.args...)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("err = %v, want %q", err, tt.wantErr)
+				}
+				if len(f.deleted) != 0 {
+					t.Fatalf("deleted %v despite %v", f.deleted, err)
+				}
+				return
+			}
+			if err != nil || len(f.deleted) != 1 || f.deleted[0] != tt.wantDeleted || !strings.Contains(out, "Deleting bot") {
+				t.Fatalf("err = %v deleted = %v out = %q", err, f.deleted, out)
+			}
+		})
 	}
 }
 

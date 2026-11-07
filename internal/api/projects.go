@@ -16,6 +16,7 @@ type Projects interface {
 	Get(ctx context.Context, c project.Caller, id string) (project.Project, error)
 	BySlug(ctx context.Context, c project.Caller, teamSlug, slug string) (project.Project, error)
 	Rename(ctx context.Context, c project.Caller, id, name string) (project.Project, error)
+	Delete(ctx context.Context, c project.Caller, id, confirm string) error
 }
 
 type projectJSON struct {
@@ -99,6 +100,21 @@ func (s *Server) renameProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]projectJSON{"project": toProjectJSON(p)})
 }
 
+// deleteProject removes a project (spec F-10b): it is gone from lists at once and cleaned up in the background.
+func (s *Server) deleteProject(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Confirm string `json:"confirm"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := s.Projects.Delete(r.Context(), callerFrom(r.Context()), r.PathValue("id"), body.Confirm); err != nil {
+		s.projectError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
 func (s *Server) projectError(w http.ResponseWriter, r *http.Request, err error) {
 	var taken *project.TakenError
 	var nameErr *project.NameError
@@ -110,6 +126,8 @@ func (s *Server) projectError(w http.ResponseWriter, r *http.Request, err error)
 		})
 	case errors.As(err, &nameErr):
 		writeError(w, http.StatusBadRequest, "invalid_name", "That project name can't be used: "+nameErr.Reason+".")
+	case errors.Is(err, project.ErrConfirm):
+		writeError(w, http.StatusBadRequest, "confirm_mismatch", "Type the project's slug to confirm deleting it.")
 	case errors.Is(err, project.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "No such project or team.")
 	case errors.Is(err, project.ErrWrongTeam):

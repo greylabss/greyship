@@ -321,7 +321,7 @@ func ask(a *App, in *bufio.Reader, prompt string) (string, error) {
 }
 
 func projectsCmd(a *App, asJSON *bool) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "projects",
 		Aliases: []string{"project"},
 		Short:   "List the projects in your team",
@@ -360,6 +360,65 @@ func projectsCmd(a *App, asJSON *bool) *cobra.Command {
 			return tw.Flush()
 		},
 	}
+	cmd.AddCommand(projectsDeleteCmd(a, asJSON))
+	return cmd
+}
+
+func projectsDeleteCmd(a *App, asJSON *bool) *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "delete <slug>",
+		Short: "Delete a project, its deployments and everything it stored",
+		Long: "Stops the project's apps and deletes it with its deployments, env vars, logs and stored files. This can't be " +
+			"undone. You are asked to type the project's slug first; --yes skips that for scripts.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			s, err := a.session()
+			if err != nil {
+				return err
+			}
+			team, err := tokenTeam(ctx, s.api)
+			if err != nil {
+				return err
+			}
+			var out struct{ Projects []project }
+			if err := s.api.do(ctx, "GET", "/v1/teams/"+url.PathEscape(team)+"/projects", nil, &out); err != nil {
+				return friendly(err)
+			}
+			var target *project
+			for i := range out.Projects {
+				if out.Projects[i].Slug == args[0] {
+					target = &out.Projects[i]
+				}
+			}
+			if target == nil {
+				return fmt.Errorf("no project %q in %s. See grey projects", args[0], team)
+			}
+			if !yes {
+				if !a.Interactive {
+					return errors.New("deleting a project can't be undone; run again with --yes to confirm")
+				}
+				answer, err := ask(a, bufio.NewReader(a.In), fmt.Sprintf("Type %s to delete it for good: ", target.Slug))
+				if errors.Is(err, errNoAnswer) || (err == nil && answer != target.Slug) {
+					return errors.New("not confirmed; nothing was deleted")
+				}
+				if err != nil {
+					return err
+				}
+			}
+			if err := s.api.do(ctx, "DELETE", "/v1/projects/"+url.PathEscape(target.ID), map[string]string{"confirm": target.Slug}, nil); err != nil {
+				return friendly(err)
+			}
+			if *asJSON {
+				return a.printJSON(map[string]any{"deleted": target.Slug})
+			}
+			fmt.Fprintf(a.Out, "✓ Deleting %s. Its apps are stopping and its files are being removed.\n", target.Slug)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "don't ask for confirmation")
+	return cmd
 }
 
 func shortDate(rfc3339 string) string {
