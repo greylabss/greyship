@@ -256,6 +256,19 @@ make_user_and_folders() {
 	install -d -m 0700 "$ETC"
 }
 
+# An upgrade keeps /etc/greyship and the data volumes; this also leaves a backup of both next to them, taken with the
+# new release's own greyship-admin, so a bad upgrade can be undone by hand.
+backup_before_upgrade() {
+	[ -f "$ETC/greyship.env" ] || return 0
+	docker compose -p greyship -f "$LIB/compose.yml" ps --status running postgres 2>/dev/null | grep -q postgres || return 0
+	step "backing up before the upgrade"
+	if sh "$DL/server/greyship-admin" backup --quiet; then
+		say "saved in /var/backups/greyship (the newest 5 are kept)"
+	else
+		say "warning: couldn't take a backup first; carrying on with the upgrade"
+	fi
+}
+
 hex() { openssl rand -hex "$1"; }
 
 write_config() {
@@ -479,7 +492,7 @@ MSG
 	fi
 	cat <<MSG
 
-Looking after it: greyship-admin status | logs | reset-password | domain | upgrade     Settings: $ETC/greyship.env
+Looking after it: greyship-admin status | logs | reset-password | backup | restore | domain | upgrade     Settings: $ETC/greyship.env
 Docs: https://docs.greyship.tech/self-hosting
 MSG
 }
@@ -494,6 +507,7 @@ main() {
 	resolve_version
 	download_release
 	make_user_and_folders
+	backup_before_upgrade
 	write_config
 	install_files
 	firewall

@@ -1,8 +1,9 @@
 #!/bin/sh
-# Looking after a Greyship server: greyship-admin status | logs [service] | reset-password <email> | domain | upgrade | version
+# Looking after a Greyship server: greyship-admin status | logs [service] | reset-password <email> | backup | restore <file> | domain | upgrade | version
 # The grey command (for deploying apps) is a different program; this one only runs on the server.
 set -eu
 services="api builder scheduler agent router dashboard"
+compose="docker compose -p greyship -f /usr/local/lib/greyship/compose.yml"
 
 case "${1:-status}" in
 	status)
@@ -25,6 +26,77 @@ case "${1:-status}" in
 		# systemd reads greyship.env exactly as the service does, and runs the command as the same user.
 		exec systemd-run --quiet --wait --pipe --collect -p User=greyship -p EnvironmentFile=/etc/greyship/greyship.env \
 			/usr/local/lib/greyship/greyship-api reset-password "$email"
+		;;
+	backup)
+		# One file with the database and /etc/greyship (the master key, certificates' settings, the GitHub app key).
+		# It does not hold the built binaries and uploaded sources in storage: those are only needed to roll back, and
+		# any project can be deployed again from its source. Keeps the newest 5 in the folder. The installer takes one
+		# before every upgrade.
+		[ "$(id -u)" = 0 ] || { echo "run as root: sudo greyship-admin backup [folder]" >&2; exit 1; }
+		quiet=0
+		dir=/var/backups/greyship
+		shift
+		for a in "$@"; do
+			case "$a" in --quiet) quiet=1 ;; *) dir=$a ;; esac
+		done
+		version=$(cat /usr/local/lib/greyship/VERSION 2>/dev/null || echo unknown)
+		work=$(mktemp -d)
+		trap 'rm -rf "$work"' EXIT
+		umask 077
+		mkdir -p "$dir" "$work/etc"
+		$compose exec -T postgres pg_dump -U greyship -Fc greyship >"$work/db.dump" || { echo "couldn't dump the database: is Greyship running? (greyship-admin status)" >&2; exit 1; }
+		cp -a /etc/greyship/. "$work/etc/"
+		printf '%s\n' "$version" >"$work/VERSION"
+		out="$dir/greyship-$version-$(date +%Y%m%d-%H%M%S).tar.gz"
+		tar -czf "$out" -C "$work" db.dump etc VERSION
+		ls -1t "$dir"/greyship-*.tar.gz 2>/dev/null | tail -n +6 | while read -r old; do rm -f "$old"; done
+		[ "$quiet" = 1 ] || cat <<MSG
+✓ Backup written: $out
+It contains your secrets (the master key among them): keep it private, and copy it off this server.
+To use it on a fresh server: install Greyship there, then   greyship-admin restore <file>
+MSG
+		;;
+	restore)
+		# Puts a backup's accounts, projects, deployments and env vars on a freshly installed Greyship (the same version
+		# or newer than the backup's). The fresh server keeps its own storage and database settings.
+		[ "$(id -u)" = 0 ] || { echo "run as root: sudo greyship-admin restore <backup file>" >&2; exit 1; }
+		file=${2:-}
+		[ -f "$file" ] || { echo "usage: greyship-admin restore <backup file>  (made by greyship-admin backup)" >&2; exit 1; }
+		work=$(mktemp -d)
+		trap 'rm -rf "$work"' EXIT
+		umask 077
+		tar -xzf "$file" -C "$work" || { echo "that isn't a Greyship backup" >&2; exit 1; }
+		[ -f "$work/db.dump" ] && [ -f "$work/etc/greyship.env" ] || { echo "that isn't a Greyship backup" >&2; exit 1; }
+		have=$(cat /usr/local/lib/greyship/VERSION 2>/dev/null || echo unknown)
+		was=$(cat "$work/VERSION" 2>/dev/null || echo unknown)
+		if [ "$have" != unknown ] && [ "$was" != unknown ] && [ "$(printf '%s\n%s\n' "$was" "$have" | sort -V | tail -1)" != "$have" ]; then
+			echo "this backup is from $was, newer than the $have installed here. Install $was or newer first (greyship-admin upgrade)." >&2
+			exit 1
+		fi
+		echo "This replaces everything in this Greyship (accounts, projects, deployments, env vars) with the backup from $was."
+		if [ "${3:-}" != "--yes" ]; then
+			printf "Type yes to continue: "
+			read -r answer
+			[ "$answer" = yes ] || { echo "cancelled"; exit 1; }
+		fi
+		env=/etc/greyship/greyship.env
+		for s in $services; do systemctl stop "greyship-$s"; done
+		$compose exec -T postgres pg_restore -U greyship -d greyship --clean --if-exists --no-owner <"$work/db.dump" || echo "(pg_restore reported warnings above; usually harmless)"
+		# Secrets that the database's contents depend on come from the backup; infrastructure settings (database,
+		# storage keys, node) stay as this server's installer wrote them.
+		for key in GREYSHIP_MASTER_KEY GREYSHIP_COOKIE_SECRET GREYSHIP_PROXY_SECRET GREYSHIP_VAPID_PRIVATE_KEY GREYSHIP_OWNER_EMAIL GREYSHIP_RESEND_API_KEY GREYSHIP_MAIL_FROM GREYSHIP_NOTIFY_FROM GREYSHIP_GITHUB_APP_ID GREYSHIP_GITHUB_APP_SLUG GREYSHIP_GITHUB_APP_CLIENT_ID GREYSHIP_GITHUB_APP_CLIENT_SECRET GREYSHIP_GITHUB_APP_PRIVATE_KEY_FILE GREYSHIP_GITHUB_WEBHOOK_SECRET; do
+			val=$(sed -n "s|^$key=||p" "$work/etc/greyship.env" | head -1)
+			[ -n "$val" ] || continue
+			if grep -q "^$key=" "$env"; then sed -i "s|^$key=.*|$key=$(printf '%s' "$val" | sed 's/[&|]/\\&/g')|" "$env"; else echo "$key=$val" >>"$env"; fi
+		done
+		if [ -f "$work/etc/github-app.pem" ]; then install -m 0640 -o root -g greyship "$work/etc/github-app.pem" /etc/greyship/github-app.pem; fi
+		systemd-run --quiet --wait --pipe --collect -p User=greyship -p EnvironmentFile="$env" /usr/local/lib/greyship/greyship-migrate
+		for s in $services; do systemctl start "greyship-$s"; done
+		cat <<MSG
+✓ Restored. Sign in with the accounts from the backup.
+Not in a backup: built binaries and uploaded sources (redeploy a project to run it again; rollbacks to old deployments
+won't work), and the domain settings (run greyship-admin domain again if this server uses a domain).
+MSG
 		;;
 	domain)
 		# Switches a server that's running on its IP (plain HTTP) to your own domains with HTTPS, or moves it to others.
@@ -79,7 +151,7 @@ MSG
 		cat /usr/local/lib/greyship/VERSION 2>/dev/null || echo unknown
 		;;
 	*)
-		echo "usage: greyship-admin status | logs [service] | reset-password <email> | domain | upgrade | version" >&2
+		echo "usage: greyship-admin status | logs [service] | reset-password <email> | backup | restore <file> | domain | upgrade | version" >&2
 		exit 1
 		;;
 esac

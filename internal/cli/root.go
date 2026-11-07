@@ -31,6 +31,8 @@ type App struct {
 	Hostname    string
 	Version     string
 	GoTool      string // path to the go command; empty when Go isn't installed, so deploys build on Greyship
+	// Upgrade installs the latest grey (or the version asked for) next to this one. Replaced in tests.
+	Upgrade func(ctx context.Context, version string) error
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {
@@ -68,7 +70,7 @@ func DefaultApp(out, errw io.Writer, getenv func(string) string, configPath, hos
 	return &App{
 		Out: out, Err: errw, In: os.Stdin, Interactive: IsTerminal(os.Stdin), ConfigPath: configPath, Getenv: getenv,
 		HTTP:  &http.Client{Timeout: 30 * time.Second},
-		Sleep: sleepCtx, OpenBrowser: OpenBrowser, Hostname: hostname, Version: version, GoTool: goTool,
+		Sleep: sleepCtx, OpenBrowser: OpenBrowser, Hostname: hostname, Version: version, GoTool: goTool, Upgrade: upgradeGrey,
 	}
 }
 
@@ -116,7 +118,7 @@ func NewRoot(a *App) *cobra.Command {
 	root.PersistentFlags().BoolVar(&asJSON, "json", false, "print machine-readable JSON")
 	root.SetOut(a.Out)
 	root.SetErr(a.Err)
-	root.AddCommand(loginCmd(a, &asJSON), logoutCmd(a, &asJSON), whoamiCmd(a, &asJSON), initCmd(a, &asJSON), projectsCmd(a, &asJSON), deployCmd(a, &asJSON), envCmd(a, &asJSON), logsCmd(a, &asJSON), githubCmd(a, &asJSON), rollbackCmd(a, &asJSON), redeployCmd(a, &asJSON), notificationsCmd(a, &asJSON), serverCmd(a, &asJSON))
+	root.AddCommand(loginCmd(a, &asJSON), logoutCmd(a, &asJSON), whoamiCmd(a, &asJSON), initCmd(a, &asJSON), projectsCmd(a, &asJSON), deployCmd(a, &asJSON), envCmd(a, &asJSON), logsCmd(a, &asJSON), githubCmd(a, &asJSON), rollbackCmd(a, &asJSON), redeployCmd(a, &asJSON), notificationsCmd(a, &asJSON), serverCmd(a, &asJSON), upgradeCmd(a, &asJSON))
 	return root
 }
 

@@ -114,16 +114,19 @@ Five small Go services (API, builder, scheduler, node agent, router) and a dashb
 S3-compatible storage. The long version is in [`docs/how-it-works.md`](docs/how-it-works.md) and
 [`docs/architecture.md`](docs/architecture.md).
 
-## Self-hosted
+## Self-hosted, and our beta
 
 Greyship is software you run on your own server: free, open source, no plans, no billing. Our private beta is just
-another instance we run; we add each tester as a user ([apply here](https://forms.greyship.tech)) (closing soon).
+another instance we run; we add each tester as a user ([apply here](https://forms.greyship.tech)).
 
-## What works
+## What works today, and what's next
 
 **Works today:** everything above, on one server: deploys from the CLI and GitHub, rollbacks, env vars, logs,
 notifications, the admin view, and the installer.
 
+**Coming next:** workers that wake on events and crons that run on schedule, custom domains from the dashboard, a guided
+GitHub App setup, SMTP email, metrics, multiple servers, and Firecracker microVMs for faster cold starts. See
+[`docs/spec.md`](docs/spec.md).
 
 ## Build from source
 

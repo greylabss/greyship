@@ -126,7 +126,35 @@ greyship-admin reset-password <email>   # a forgotten password
 Settings live in `/etc/greyship/greyship.env`; restart with
 `systemctl restart greyship-api greyship-builder greyship-scheduler greyship-agent greyship-router`.
 
-### Backups
+### Upgrading
+
+```sh
+greyship-admin upgrade
+```
+
+keeps your settings and data, and writes a backup to `/var/backups/greyship` first (the newest 5 are kept). To update
+the CLI on your computer, run `grey upgrade`. Reinstalling by running the install command again does the same thing:
+it never wipes an existing install.
+
+### Backups and moving to a new server
+
+```sh
+sudo greyship-admin backup            # one file in /var/backups/greyship (or give a folder)
+```
+
+The file holds your accounts, projects, deployments and env vars **and your secrets, the master key included**: keep it
+private and copy it off the server. To move, or to start over on a clean machine:
+
+```sh
+# on the new server: install Greyship (same version or newer), then
+sudo greyship-admin restore greyship-v0.1.2-20261107-013345.tar.gz
+```
+
+A restore replaces what is on that server with the backup, so it asks you to type `yes`. Built binaries and uploaded
+sources are not in the file (redeploy a project to run it again), and neither are domain settings (run
+`greyship-admin domain` again).
+
+The older way, by hand:
 
 Back up these two things:
 
