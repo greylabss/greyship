@@ -215,7 +215,7 @@ func run(logger *slog.Logger) error {
 	handler := api.New(api.Options{
 		Auth:          authService,
 		Accounts:      authService,
-		Domains:       &domains.Service{Pool: pool, Projects: projects, AppsDomain: cfg.AppsDomain, PlatformDomain: cfg.PlatformDomain, Resolver: net.DefaultResolver},
+		Domains:       &domains.Service{Pool: pool, Projects: projects, AppsDomain: cfg.AppsDomain, PlatformDomain: cfg.PlatformDomain, Resolver: net.DefaultResolver, Warm: certificateWarmer(cfg)},
 		Mail:          sender,
 		Projects:      projects,
 		Deployments:   deploy.NewService(pool, projects, storage, logger, time.Now),
@@ -256,4 +256,13 @@ func run(logger *slog.Logger) error {
 		}
 	}
 	return nil
+}
+
+// certificateWarmer is how the API asks the router on this machine for a new domain's certificate. Development and
+// plain-HTTP installs have no certificates to get.
+func certificateWarmer(cfg config.Config) func(ctx context.Context, hostname string) error {
+	if cfg.Dev || cfg.HTTPOnly {
+		return nil
+	}
+	return domains.TLSWarmer("127.0.0.1:443")
 }

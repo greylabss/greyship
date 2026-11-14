@@ -20,7 +20,12 @@
 #   --apps-domain example.net       where apps live with --domain (wildcard record); a different domain than the
 #                                   dashboard's is better
 #   --version v0.1.0                a release other than the latest
+#   --newsletter / --no-newsletter  answer the newsletter question ahead (only asked when you give an email)
 #   --yes                           don't ask anything
+#
+# Install counts: the script tells greyship.tech when an install starts, succeeds, fails (and at which step) or
+# upgrades, with a random install id, the version, the OS and the CPU type. No email, hostname or IP address is kept.
+# GREYSHIP_NO_TELEMETRY=1 turns it off. Details: https://greyship.tech/privacy (decisions.md 060).
 set -eu
 # One locale, so apt and perl don't warn about the one the person's ssh session brought along.
 LC_ALL=C.UTF-8
@@ -31,9 +36,21 @@ REPO=${GREYSHIP_REPO:-greylabss/greyship}
 VERSION=${GREYSHIP_VERSION:-latest}
 LIB=/usr/local/lib/greyship
 ETC=/etc/greyship
+SITE=${GREYSHIP_SITE_URL:-https://greyship.tech}
+NO_TELEMETRY=${GREYSHIP_NO_TELEMETRY:-}
+NEWSLETTER=${GREYSHIP_NEWSLETTER:-}
+CURRENT_STEP=starting
+INSTALL_ID=
+INSTALL_KIND=started
+OS_LABEL=unknown
+ARCH=unknown
+FINISHED=0
 
 say() { printf '%s\n' "$*"; }
-step() { printf '\n== %s\n' "$*"; }
+step() {
+	CURRENT_STEP=$*
+	printf '\n== %s\n' "$*"
+}
 fail() {
 	printf 'greyship install: %s\n' "$*" >&2
 	exit 1
@@ -55,6 +72,8 @@ parse_args() {
 			--apps-domain) APPS_DOMAIN=${2:?--apps-domain needs a value}; shift ;;
 			--email) OWNER_EMAIL=${2:?--email needs a value}; shift ;;
 			--version) VERSION=${2:?--version needs a value}; shift ;;
+			--newsletter) NEWSLETTER=yes ;;
+			--no-newsletter) NEWSLETTER=no ;;
 			--yes | -y) YES=1 ;;
 			*) fail "unknown option $1 (see the top of this script)" ;;
 		esac
@@ -90,6 +109,7 @@ check_system() {
 	# Read in a subshell: os-release defines VERSION, which would overwrite ours.
 	ID=$(. /etc/os-release && printf '%s' "${ID:-}")
 	VERSION_CODENAME=$(. /etc/os-release && printf '%s' "${VERSION_CODENAME:-}")
+	OS_LABEL=$(. /etc/os-release && printf '%s %s' "${ID:-linux}" "${VERSION_ID:-}" | tr -cd 'A-Za-z0-9 ._-')
 	case "$ID" in
 		ubuntu | debian) ;;
 		*) fail "unsupported OS ${ID:-unknown}: use Ubuntu 22.04/24.04 or Debian 12" ;;
@@ -110,6 +130,54 @@ check_system() {
 				fail "${who:-something} already listens on port $port, and Greyship's router needs ports 80 and 443. Stop it (or move it to other ports) and run this again, or use a server that only runs Greyship."
 			fi
 		done
+	fi
+}
+
+# report KIND: one anonymous install count (see the top of this file). Never fails the install and never waits long.
+report() {
+	[ "$NO_TELEMETRY" != 1 ] || return 0
+	step_field=
+	[ "$1" != failed ] || step_field=$(printf ',"failed_step":"%s"' "$(printf '%s' "$CURRENT_STEP" | tr -d '"\\' | cut -c1-80)")
+	curl -fsS --max-time 5 -o /dev/null -H 'Content-Type: application/json' \
+		-d "{\"install_id\":\"$INSTALL_ID\",\"kind\":\"$1\",\"version\":\"$VERSION\",\"os\":\"$OS_LABEL\",\"arch\":\"$ARCH\"$step_field}" \
+		"$SITE/api/installs" >/dev/null 2>&1 || true
+}
+
+start_reporting() {
+	if [ -s "$ETC/install-id" ]; then
+		INSTALL_ID=$(tr -cd 'A-Za-z0-9-' <"$ETC/install-id")
+		INSTALL_KIND=upgraded
+	else
+		INSTALL_ID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || od -An -tx1 -N16 /dev/urandom | tr -d ' \n')
+	fi
+	[ "$NO_TELEMETRY" = 1 ] || say "Greyship counts installs anonymously (version, OS, a random id). GREYSHIP_NO_TELEMETRY=1 turns it off: $SITE/privacy"
+	trap 'on_exit $?' EXIT
+	trap 'exit 130' INT TERM HUP
+	[ "$INSTALL_KIND" = upgraded ] || report started
+}
+
+on_exit() {
+	[ "$1" = 0 ] || [ "$FINISHED" = 1 ] || report failed
+}
+
+# The newsletter is separate from the counts: only an explicit yes sends the email, and nothing is sent until the
+# person confirms from the email they get.
+ask_newsletter() {
+	[ -n "$OWNER_EMAIL" ] || return 0
+	if [ -z "$NEWSLETTER" ] && [ "$YES" = 0 ] && (: </dev/tty) 2>/dev/null; then
+		printf 'Get Greyship news by email, about once a month? [Y/n]: ' >/dev/tty
+		read -r answer </dev/tty || answer=n
+		case "$answer" in
+			"" | y | Y | yes | Yes) NEWSLETTER=yes ;;
+			*) NEWSLETTER=no ;;
+		esac
+	fi
+	[ "$NEWSLETTER" = yes ] || return 0
+	if curl -fsS --max-time 8 -o /dev/null -H 'Content-Type: application/json' \
+		-d "{\"email\":\"$OWNER_EMAIL\",\"source\":\"install\"}" "$SITE/api/subscribe" 2>/dev/null; then
+		say "Newsletter: check $OWNER_EMAIL for a link to confirm."
+	else
+		say "Newsletter: couldn't reach $SITE right now; subscribe later at $SITE"
 	fi
 }
 
@@ -163,6 +231,7 @@ choose_domains() {
 	fi
 	if [ -n "$OWNER_EMAIL" ]; then
 		case "$OWNER_EMAIL" in
+			*[\"\\\ ]*) fail "that doesn't look like an email address: $OWNER_EMAIL" ;;
 			*@*.*) ;;
 			*) fail "that doesn't look like an email address: $OWNER_EMAIL" ;;
 		esac
@@ -509,7 +578,9 @@ MSG
 main() {
 	parse_args "$@"
 	check_system
+	start_reporting
 	choose_domains
+	[ "$INSTALL_KIND" = upgraded ] || ask_newsletter
 	install_docker
 	install_gvisor
 	install_node
@@ -521,6 +592,10 @@ main() {
 	install_files
 	firewall
 	start_everything
+	printf '%s\n' "$INSTALL_ID" >"$ETC/install-id"
+	chmod 0600 "$ETC/install-id"
+	FINISHED=1
+	if [ "$INSTALL_KIND" = upgraded ]; then report upgraded; else report succeeded; fi
 	finish
 }
 

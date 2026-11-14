@@ -1,6 +1,6 @@
 ---
-title: Self-hosting
-description: Run Greyship on your own server with one command.
+title: Install Greyship (self-hosting)
+description: Put Greyship itself on your own server with one command.
 ---
 
 Greyship is open source ([AGPL-3.0](https://github.com/greylabss/greyship)) and made to run on a server you own. One
@@ -47,6 +47,20 @@ When it finishes, the dashboard is at `http://<your server's IP>:8000`. Apps you
 it out, not for real use. To make it real, add a domain (below).
 
 To say who the owner is up front, add `--email you@example.com`: then only that email can create the first account.
+
+### What the installer sends
+
+The installer tells greyship.tech when an install starts, succeeds, fails (and at which step) or upgrades. Each message
+has a random install id made on your server, the Greyship version, the operating system and the CPU type. No email,
+hostname or IP address is kept. It's how we know how many installs work and where they break. Turn it off with:
+
+```sh
+curl -fsSL https://greyship.tech/install | sudo GREYSHIP_NO_TELEMETRY=1 sh
+```
+
+If you give an email, the installer also asks whether you want Greyship news by email. Only a yes sends your address,
+and nothing arrives until you confirm from your inbox. Every email has a one-click unsubscribe. Details:
+[greyship.tech/privacy](https://greyship.tech/privacy).
 
 ## First visit
 

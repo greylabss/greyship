@@ -30,15 +30,26 @@ Serve a web service on your own domain, such as `api.example.com`.
 
 1. In the dashboard open the project's **Domains** page and press **Add domain** (or run `grey domains add api.example.com`;
    add `--service api` if the project has several web services).
-2. At your DNS provider create the record the page shows:
+2. The page shows the record to create, with copy buttons (**View DNS configuration**). At your DNS provider create it:
    - a **CNAME** from `api.example.com` to the service's default address (for example `api-shop.greyshipapp.tech`), or
    - for a name with no subdomain (`example.com`), an **A** record to your server's IP address, because a bare domain
      can't be a CNAME.
-3. The page tells you when the name **points here**. HTTPS is set up by itself the first time someone visits the name, and
-   renews on its own.
+3. The page checks again every few seconds and changes from **Verification required** to **Valid configuration** when
+   it sees the record. **Refresh** checks right away. HTTPS is prepared at that moment and renews on its own.
 
-`grey domains` lists the project's addresses with the DNS state of each custom one; `grey domains remove api.example.com`
-stops serving it.
+**On Cloudflare?** If Cloudflare is your DNS provider, a **Configure Cloudflare** button can appear next to the record. It
+opens Cloudflare, you approve, and Cloudflare adds the record for you. If you add the record by hand on Cloudflare, set it
+to **DNS only** (the grey cloud), or HTTPS can't be issued.
+
+On the command line:
+
+```sh
+grey domains add api.example.com        # prints the record to create
+grey domains connect api.example.com    # a link that adds it on Cloudflare, when available
+grey domains verify api.example.com --wait   # keeps checking until it points here
+grey domains                            # every address and the state of each custom one
+grey domains remove api.example.com     # stops serving it
+```
 
 Good to know:
 

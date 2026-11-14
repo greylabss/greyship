@@ -277,3 +277,58 @@ body {
   }
 }
 
+
+/* Landing: sections rise in as they scroll into view (CSS scroll-driven animations; static without support or with
+   reduced motion). */
+@keyframes gs-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .gs-reveal {
+      animation: gs-reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 28%;
+    }
+  }
+}
+
+/* Landing architecture canvas: dashed connectors that drift toward the apps. */
+.gs-flow-line {
+  background-image: linear-gradient(to bottom, var(--gs-text-dim) 50%, transparent 50%);
+  background-size: 1px 8px;
+  animation: gs-flow-down 1.6s linear infinite;
+}
+
+.gs-flow-line-x {
+  background-image: linear-gradient(to right, var(--gs-text-dim) 50%, transparent 50%);
+  background-size: 8px 1px;
+  animation: gs-flow-right 1.6s linear infinite;
+}
+
+@keyframes gs-flow-down {
+  to {
+    background-position: 0 8px;
+  }
+}
+
+@keyframes gs-flow-right {
+  to {
+    background-position: 8px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-flow-line,
+  .gs-flow-line-x {
+    animation: none;
+  }
+}

@@ -31,7 +31,7 @@ export function MetricsView({ services, metrics }: { services: string[]; metrics
           ["Requests", "57.9k", "+12% vs yesterday"],
           ["Latency p95", "41 ms", "p50 9 ms · p99 112 ms"],
           ["Cold starts", "1", "612 ms · 12 resumes avg 18 ms"],
-          ["Running time", "14.2 h", "asleep 9.8 h · $0"],
+          ["Running time", "14.2 h", "asleep 9.8 h"],
         ].map(([l, v, n]) => (
           <div key={l} className="flex flex-col gap-1 bg-bg px-4 py-4">
             <dt className="text-12 text-muted">{l}</dt>
@@ -48,7 +48,7 @@ export function MetricsView({ services, metrics }: { services: string[]; metrics
           </section>
         ))}
       </div>
-      <p className="text-12 text-muted">Gaps at zero are sleep: no instances running and nothing billed. Click a marker for details.</p>
+      <p className="text-12 text-muted">Gaps at zero are sleep: no instances running. Click a marker for details.</p>
     </div>
   );
 }

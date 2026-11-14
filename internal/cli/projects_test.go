@@ -58,7 +58,23 @@ func (f *projectAPI) server(t *testing.T) *httptest.Server {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.domains = append(f.domains, "POST "+body.Hostname+"/"+body.Service)
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"domain":{"hostname":"` + body.Hostname + `","service":"api","custom":true,"dns":"not_pointing"}}`))
+		_, _ = w.Write([]byte(`{"domain":{"hostname":"` + body.Hostname + `","service":"api","custom":true,"dns":"not_pointing","records":[{"type":"CNAME","name":"bot","value":"api-bot.greyshipapp.tech"}]}}`))
+	})
+	mux.HandleFunc("POST /v1/projects/id-bot/domains/{hostname}/verify", func(w http.ResponseWriter, r *http.Request) {
+		f.domains = append(f.domains, "VERIFY "+r.PathValue("hostname"))
+		state := "unresolved"
+		if len(f.domains) > 3 {
+			state = "pointing"
+		}
+		_, _ = w.Write([]byte(`{"domain":{"hostname":"bot.example.com","service":"api","custom":true,"dns":"` + state + `","records":[{"type":"CNAME","name":"bot","value":"api-bot.greyshipapp.tech"}]}}`))
+	})
+	mux.HandleFunc("GET /v1/projects/id-bot/domains/{hostname}/connect", func(w http.ResponseWriter, r *http.Request) {
+		if r.PathValue("hostname") == "plain.example.com" {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`{"error":{"code":"no_auto_setup","message":"one-click DNS setup isn't available for this domain."}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"provider":"cloudflare","url":"https://dash.cloudflare.com/apply?domain=example.com"}`))
 	})
 	mux.HandleFunc("DELETE /v1/projects/id-bot/domains/{hostname}", func(w http.ResponseWriter, r *http.Request) {
 		f.domains = append(f.domains, "DELETE "+r.PathValue("hostname"))
@@ -267,6 +283,16 @@ func TestDomains(t *testing.T) {
 	}
 	if out, err = runIn(t, srv, dir, "", false, "domains", "remove", "bot.example.com"); err != nil || !strings.Contains(out, "removed") || f.domains[1] != "DELETE bot.example.com" {
 		t.Fatalf("remove: %v %q %v", err, out, f.domains)
+	}
+	out, err = runIn(t, srv, dir, "", false, "domains", "verify", "bot.example.com", "--wait")
+	if err != nil || !strings.Contains(out, "points here") || len(f.domains) < 4 {
+		t.Fatalf("verify --wait: %v %q %v", err, out, f.domains)
+	}
+	if out, err = runIn(t, srv, dir, "", false, "domains", "connect", "bot.example.com"); err != nil || !strings.Contains(out, "https://dash.cloudflare.com/apply") {
+		t.Fatalf("connect: %v %q", err, out)
+	}
+	if _, err = runIn(t, srv, dir, "", false, "domains", "connect", "plain.example.com"); err == nil || !strings.Contains(err.Error(), "can't be set up in one click") {
+		t.Fatalf("connect on an unsupported provider: %v", err)
 	}
 	if _, err := runIn(t, srv, t.TempDir(), "", false, "domains"); err == nil || !strings.Contains(err.Error(), "isn't linked") {
 		t.Fatalf("outside a project folder: %v", err)

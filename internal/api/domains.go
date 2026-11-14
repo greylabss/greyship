@@ -15,6 +15,8 @@ type Domains interface {
 	List(ctx context.Context, c project.Caller, projectID string) ([]domains.Entry, error)
 	Add(ctx context.Context, c project.Caller, projectID, hostname, service string) (domains.Entry, error)
 	Remove(ctx context.Context, c project.Caller, projectID, hostname string) error
+	Verify(ctx context.Context, c project.Caller, projectID, hostname string) (domains.Entry, error)
+	Connect(ctx context.Context, c project.Caller, projectID, hostname string) (domains.Link, error)
 }
 
 type domainJSON struct {
@@ -23,10 +25,22 @@ type domainJSON struct {
 	Custom   bool   `json:"custom"`
 	// DNS is pointing, not_pointing, unresolved or unknown, for custom hostnames; empty for the default address.
 	DNS string `json:"dns,omitempty"`
+	// Records are the DNS records to create at the provider, for custom hostnames.
+	Records []recordJSON `json:"records,omitempty"`
+}
+
+type recordJSON struct {
+	Type  string `json:"type"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 func toDomainJSON(e domains.Entry) domainJSON {
-	return domainJSON{Hostname: e.Hostname, Service: e.Service, Custom: e.Custom, DNS: e.DNS}
+	out := domainJSON{Hostname: e.Hostname, Service: e.Service, Custom: e.Custom, DNS: e.DNS}
+	for _, r := range e.Records {
+		out.Records = append(out.Records, recordJSON{Type: r.Type, Name: r.Name, Value: r.Value})
+	}
+	return out
 }
 
 func (s *Server) listDomains(w http.ResponseWriter, r *http.Request) {
@@ -58,6 +72,32 @@ func (s *Server) addDomain(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]domainJSON{"domain": toDomainJSON(e)})
 }
 
+func (s *Server) verifyDomain(w http.ResponseWriter, r *http.Request) {
+	host, err := url.PathUnescape(r.PathValue("hostname"))
+	var e domains.Entry
+	if err == nil {
+		e, err = s.Domains.Verify(r.Context(), callerFrom(r.Context()), r.PathValue("id"), host)
+	}
+	if err != nil {
+		s.domainError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]domainJSON{"domain": toDomainJSON(e)})
+}
+
+func (s *Server) connectDomain(w http.ResponseWriter, r *http.Request) {
+	host, err := url.PathUnescape(r.PathValue("hostname"))
+	var link domains.Link
+	if err == nil {
+		link, err = s.Domains.Connect(r.Context(), callerFrom(r.Context()), r.PathValue("id"), host)
+	}
+	if err != nil {
+		s.domainError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"provider": link.Provider, "url": link.URL})
+}
+
 func (s *Server) removeDomain(w http.ResponseWriter, r *http.Request) {
 	host, err := url.PathUnescape(r.PathValue("hostname"))
 	if err == nil {
@@ -85,6 +125,8 @@ func (s *Server) domainError(w http.ResponseWriter, r *http.Request, err error) 
 		writeError(w, http.StatusBadRequest, "service_required", err.Error()+".")
 	case errors.Is(err, domains.ErrUnknownService):
 		writeError(w, http.StatusBadRequest, "unknown_service", err.Error()+".")
+	case errors.Is(err, domains.ErrNoAutoSetup):
+		writeError(w, http.StatusNotFound, "no_auto_setup", err.Error()+".")
 	case errors.Is(err, domains.ErrNotFound):
 		writeError(w, http.StatusNotFound, "not_found", err.Error()+".")
 	default:

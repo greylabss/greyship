@@ -68,7 +68,7 @@ function ServiceSettings({ team, project, service, services }: { team: string; p
 
   const changes = (Object.keys(form) as (keyof Form)[]).filter((k) => form[k] !== saved[k]);
   const valid = Object.keys(errors).length === 0;
-  const alwaysOnCost = form.min > 0 ? `≈ $${(form.min * Number(form.memory) * 0.0045).toFixed(2)}/mo while idle` : null;
+  const alwaysOnMemory = form.min > 0 ? `Holds ${form.min * Number(form.memory)} MB while idle.` : null;
 
   function set<K extends keyof Form>(k: K, v: Form[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -123,7 +123,7 @@ function ServiceSettings({ team, project, service, services }: { team: string; p
         </div>
         {form.min > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-13 text-muted">
-            <AlwaysOnBadge /> {service.name} will never sleep. {alwaysOnCost}
+            <AlwaysOnBadge /> {service.name} will never sleep. {alwaysOnMemory}
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
@@ -224,7 +224,7 @@ function ServiceSettings({ team, project, service, services }: { team: string; p
               </li>
             ))}
           </ul>
-          <p className="text-13 text-muted">{alwaysOnCost ? `Estimated cost: ${alwaysOnCost}.` : "Estimated cost unchanged: still $0 while idle."}</p>
+          <p className="text-13 text-muted">{alwaysOnMemory ?? "Nothing is held while idle."}</p>
           <CommandHint command={`grey deploy  # or edit [services.${service.name}] in greyship.toml`} />
           <DialogFooter>
             <Button onClick={() => setReview(false)}>Back</Button>

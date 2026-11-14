@@ -15,7 +15,7 @@ export function AuthShell({ aside, children }: { aside: ReactNode; children: Rea
           greyship.tech
         </Link>{" "}
         ·{" "}
-        <a href="https://x.com/greyshipapp" className="hover:text-muted">
+        <a href="https://x.com/greylabss" className="hover:text-muted">
           Updates
         </a>
       </footer>

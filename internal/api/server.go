@@ -128,6 +128,8 @@ func New(o Options) *Server {
 		s.mux.Handle("GET /v1/projects/{id}/domains", s.requireUser(http.HandlerFunc(s.listDomains)))
 		s.mux.Handle("POST /v1/projects/{id}/domains", s.requireUser(http.HandlerFunc(s.addDomain)))
 		s.mux.Handle("DELETE /v1/projects/{id}/domains/{hostname}", s.requireUser(http.HandlerFunc(s.removeDomain)))
+		s.mux.Handle("POST /v1/projects/{id}/domains/{hostname}/verify", s.requireUser(http.HandlerFunc(s.verifyDomain)))
+		s.mux.Handle("GET /v1/projects/{id}/domains/{hostname}/connect", s.requireUser(http.HandlerFunc(s.connectDomain)))
 	}
 
 	// Build machines authenticate with a per-build token, not a user (decisions.md 039).

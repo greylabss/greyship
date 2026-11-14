@@ -112,6 +112,12 @@ Think of Greyship as a building. The first person to walk into a brand-new build
 ### How does Greyship talk to GitHub?
 GitHub only lets a program look at your code if it has an official badge, called a GitHub App. Greyship makes a badge for each person: you press one button, confirm on GitHub, and GitHub hands Greyship your own badge and its secret keys. Greyship locks them in the safe (encrypted). Then you tell GitHub which of your repositories your badge may read, and Greyship can fetch your code and deploy it whenever you push. Nobody else's badge can touch your repositories, and yours can't touch theirs.
 
+### How does my own domain (api.example.com) get to my robot?
+Every robot gets a street address on greyshipapp.tech. If you want your own address instead, you tell Greyship the name, and it shows you one line to write in your domain's address book (the DNS settings): "this name is the same place as that address". The page keeps asking the address book every few seconds, and turns green the moment your line shows up. At that moment Greyship also asks the receptionist to get the padlock ready, so the first visitor doesn't have to wait. If your address book is Cloudflare, Greyship can ask Cloudflare to write the line for you: you press a button, approve it on Cloudflare's own page, and that's it. Greyship never sees your Cloudflare password.
+
+### Does the installer phone home?
+A little, and it says so. When someone installs Greyship, the installer sends us a postcard: "an install started" and then "it worked" (or "it broke at this step"). The postcard has a random number made up on their server, the Greyship version and the kind of computer. No name, no email, no address. That's how we know how many people use Greyship and where installs break. Anyone can say "no postcards" with `GREYSHIP_NO_TELEMETRY=1`. Separately, the installer asks if you want our newsletter; only a yes sends your email, and you still have to click a link in your inbox before you get anything.
+
 ### How does Greyship send email?
 Greyship doesn't run its own post office. It hires one called Resend. The owner gives Greyship the Resend key (like a membership card) and the street address it should send from (the domain) on the Email page. Greyship locks the card in a safe (encrypted) and takes it out only when it needs to post a letter. With no card, no letters go out; sign-in codes are left in a drawer on the server instead.
 

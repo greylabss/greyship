@@ -242,8 +242,10 @@ export async function githubApp(team: string): Promise<GitHubAppStatus> {
 }
 
 // projectDomains are a project's addresses: each web service's default one and its custom domains, with their DNS state.
-export async function projectDomains(projectId: string): Promise<{ hostname: string; service: string; custom: boolean; dns?: string }[]> {
-  return (await json<{ domains: { hostname: string; service: string; custom: boolean; dns?: string }[] }>(`/v1/projects/${projectId}/domains`)).domains;
+export type LiveDomain = { hostname: string; service: string; custom: boolean; dns?: string; records?: { type: string; name: string; value: string }[] };
+
+export async function projectDomains(projectId: string): Promise<LiveDomain[]> {
+  return (await json<{ domains: LiveDomain[] }>(`/v1/projects/${projectId}/domains`)).domains;
 }
 
 export async function githubState(team: string): Promise<GitHubState> {

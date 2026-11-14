@@ -1,0 +1,18 @@
+{
+  "providerId": "greyship.tech",
+  "providerName": "Greyship",
+  "serviceId": "custom-domain-a",
+  "serviceName": "Greyship custom domain (bare domain)",
+  "version": 1,
+  "logoUrl": "https://greyship.tech/icon.svg",
+  "description": "Points a bare domain at an app running on a Greyship server.",
+  "variableDescription": "ip is the address of the Greyship server",
+  "records": [
+    {
+      "type": "A",
+      "host": "@",
+      "pointsTo": "%ip%",
+      "ttl": 3600
+    }
+  ]
+}

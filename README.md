@@ -32,21 +32,21 @@ apps keep running if you ever stop using Greyship.
 
 ```text
 $ grey deploy
+Created project you/testapi
 
-  api      web     ./cmd/api      starts a server in cmd/api/main.go:30 (http.ListenAndServe)
-  worker   worker  ./cmd/worker   no server start found from main()
-  release  once    ./cmd/migrate  cmd/migrate is the release command
+  testapi  web  .  starts a server in main.go:13 (http.ListenAndServe)
 
-Building here with go1.27 for linux/amd64
-Uploaded 3 binaries (7.8 MB)
+Building here with go1.27.3 for linux/amd64
+Uploaded 1 binaries (2.4 MB)
 
-  │ release command finished
-  │ starting api on greyship-1
+Deployment 5e7c26de-6e97-422e-8ac1-4a70528e3d19 queued:
+  │ using the 1 binaries built on your machine
+  │ checked testapi: Go 1.27.3, linux/amd64 (5.6 MB)
+  │ starting testapi on your-server
   │ live
 
 ✓ Live
-  api     http://api-hello.apps-203-0-113-7.sslip.io
-  worker  (worker, no URL)
+  testapi  https://testapi-testapi.greyshipapp.tech
 ```
 
 ## What can Greyship do?

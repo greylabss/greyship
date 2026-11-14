@@ -5,6 +5,7 @@ package domains_test
 import (
 	"context"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 
@@ -22,6 +23,15 @@ func (d dns) LookupHost(_ context.Context, host string) ([]string, error) {
 	}
 	return nil, errors.New("no such host")
 }
+
+func (d dns) LookupNS(_ context.Context, name string) ([]*net.NS, error) {
+	if h, ok := d["NS "+name]; ok {
+		return []*net.NS{{Host: h[0]}}, nil
+	}
+	return nil, errors.New("no such zone")
+}
+
+func (d dns) LookupTXT(context.Context, string) ([]string, error) { return nil, errors.New("none") }
 
 func TestCustomDomainsOfAProject(t *testing.T) {
 	ctx := context.Background()
@@ -82,6 +92,25 @@ func TestCustomDomainsOfAProject(t *testing.T) {
 	}
 	if _, err := svc.Add(ctx, asOwner, p.ID, "shop.example.com", "web"); !errors.Is(err, domains.ErrTaken) {
 		t.Fatalf("a hostname already in use: %v", err)
+	}
+	if len(e.Records) != 1 || e.Records[0] != (domains.Record{Type: "CNAME", Name: "shop", Value: "api-shop.greyshipapp.tech"}) {
+		t.Fatalf("records = %+v", e.Records)
+	}
+	v, err := svc.Verify(ctx, asOwner, p.ID, "Shop.Example.com.")
+	if err != nil || v.DNS != domains.Pointing {
+		t.Fatalf("verify = %+v, %v", v, err)
+	}
+	if _, err := svc.Verify(ctx, project.Caller{UserID: viewer.ID}, p.ID, "shop.example.com"); !errors.Is(err, project.ErrReadOnly) {
+		t.Fatalf("a viewer verifies: %v", err)
+	}
+	if _, err := svc.Verify(ctx, project.Caller{UserID: stranger.ID}, p.ID, "shop.example.com"); !errors.Is(err, project.ErrNotFound) {
+		t.Fatalf("an outsider verifies: %v", err)
+	}
+	if _, err := svc.Verify(ctx, asOwner, p.ID, "nope.example.com"); !errors.Is(err, domains.ErrNotFound) {
+		t.Fatalf("verifying what isn't there: %v", err)
+	}
+	if _, err := svc.Connect(ctx, asOwner, p.ID, "shop.example.com"); !errors.Is(err, domains.ErrNoAutoSetup) {
+		t.Fatalf("connect without a _domainconnect record: %v", err)
 	}
 
 	// The routers load it, as the label of the service it points at.

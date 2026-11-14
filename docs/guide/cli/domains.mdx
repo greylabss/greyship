@@ -25,6 +25,14 @@ Flags:
       --service string   the web service, when the project has several
 ```
 
+### `grey domains connect`
+
+For a domain on Cloudflare, prints a link that opens Cloudflare and adds the record after you approve it. Not every domain can do this; then add the record from grey domains add by hand.
+
+```text
+grey domains connect <hostname>
+```
+
 ### `grey domains remove`
 
 Stop serving a custom domain
@@ -34,4 +42,18 @@ grey domains remove <hostname>
 ```
 
 Also: `rm`.
+
+### `grey domains verify`
+
+Looks up the domain's DNS record and says whether it points at this Greyship. With --wait it keeps checking until it does (up to 10 minutes), like the dashboard. The first time it points here, HTTPS is prepared for it.
+
+```text
+grey domains verify <hostname> [flags]
+```
+
+Flags:
+
+```text
+      --wait   keep checking until the domain points here
+```
 

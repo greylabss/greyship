@@ -24,7 +24,7 @@ export function Status({ tone, label, detail, className }: { tone: Tone; label: 
 export function AlwaysOnBadge() {
   return (
     <span className="inline-flex h-5 items-center rounded-control border border-border-strong px-1.5 text-12 text-muted">
-      always on · billed 24/7
+      always on · holds memory 24/7
     </span>
   );
 }

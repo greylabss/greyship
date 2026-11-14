@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -32,9 +34,11 @@ type InvalidError struct{ Reason string }
 
 func (e *InvalidError) Error() string { return "invalid hostname: " + e.Reason }
 
-// Resolver looks hostnames up in DNS; tests replace it.
+// Resolver looks names up in DNS; tests replace it. *net.Resolver satisfies it.
 type Resolver interface {
 	LookupHost(ctx context.Context, host string) ([]string, error)
+	LookupNS(ctx context.Context, name string) ([]*net.NS, error)
+	LookupTXT(ctx context.Context, name string) ([]string, error)
 }
 
 // DNS states of a custom hostname.
@@ -51,6 +55,14 @@ type Service struct {
 	// AppsDomain and PlatformDomain are Greyship's own: custom hostnames can't be under them.
 	AppsDomain, PlatformDomain string
 	Resolver                   Resolver
+	// Warm makes the router get a certificate for a hostname that has just started pointing here. Nil skips it.
+	Warm func(ctx context.Context, hostname string) error
+	// HTTPClient and ConnectHosts are for Domain Connect (connect.go); the defaults are a plain client and Cloudflare.
+	HTTPClient   *http.Client
+	ConnectHosts []string
+
+	mu     sync.Mutex
+	warmed map[string]bool
 }
 
 // Entry is one hostname of a service. Custom is false for the address Greyship gives every web service.
@@ -59,6 +71,8 @@ type Entry struct {
 	Service  string
 	Custom   bool
 	DNS      string
+	// Records is what to create at the DNS provider, for custom hostnames.
+	Records []Record
 }
 
 var label = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -122,7 +136,7 @@ func (s *Service) List(ctx context.Context, c project.Caller, projectID string) 
 	}
 	server := s.serverAddrs(ctx)
 	for _, r := range rows {
-		out = append(out, Entry{Hostname: r.Hostname, Service: r.ServiceName, Custom: true, DNS: s.check(ctx, r.Hostname, server)})
+		out = append(out, s.customEntry(ctx, r.Hostname, r.ServiceName, r.Subdomain+"."+s.AppsDomain, server))
 	}
 	return out, nil
 }
@@ -178,7 +192,11 @@ func (s *Service) Add(ctx context.Context, c project.Caller, projectID, rawHostn
 	if err := tx.Commit(ctx); err != nil {
 		return Entry{}, fmt.Errorf("commit domain %s: %w", hostname, err)
 	}
-	return Entry{Hostname: hostname, Service: target.Name, Custom: true, DNS: s.check(ctx, hostname, s.serverAddrs(ctx))}, nil
+	defaultAddr := ""
+	if target.Subdomain != nil {
+		defaultAddr = *target.Subdomain + "." + s.AppsDomain
+	}
+	return s.customEntry(ctx, hostname, target.Name, defaultAddr, s.serverAddrs(ctx)), nil
 }
 
 // Remove stops serving a custom hostname.

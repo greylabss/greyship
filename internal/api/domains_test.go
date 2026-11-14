@@ -38,6 +38,17 @@ func (f *fakeDomains) Remove(_ context.Context, c project.Caller, _, hostname st
 	return f.err
 }
 
+func (f *fakeDomains) Verify(_ context.Context, c project.Caller, _, hostname string) (domains.Entry, error) {
+	f.caller = c
+	return domains.Entry{Hostname: hostname, Service: "api", Custom: true, DNS: domains.Pointing,
+		Records: []domains.Record{{Type: "CNAME", Name: "shop", Value: "api-shop.greyshipapp.tech"}}}, f.err
+}
+
+func (f *fakeDomains) Connect(_ context.Context, c project.Caller, _, _ string) (domains.Link, error) {
+	f.caller = c
+	return domains.Link{Provider: "cloudflare", URL: "https://dash.cloudflare.com/apply"}, f.err
+}
+
 func TestDomainEndpoints(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -53,6 +64,11 @@ func TestDomainEndpoints(t *testing.T) {
 		{"list shows the default address first", nil, "GET", "/v1/projects/p1/domains", "", true, 200, `"hostname":"api-shop.greyshipapp.tech","service":"api","custom":false`},
 		{"list needs auth", nil, "GET", "/v1/projects/p1/domains", "", false, 401, "unauthenticated"},
 		{"add", nil, "POST", "/v1/projects/p1/domains", `{"hostname":"shop.example.com","service":"api"}`, true, 201, `"dns":"unresolved"`},
+		{"verify", nil, "POST", "/v1/projects/p1/domains/shop.example.com/verify", "", true, 200, `"records":[{"type":"CNAME","name":"shop","value":"api-shop.greyshipapp.tech"}]`},
+		{"verify needs auth", nil, "POST", "/v1/projects/p1/domains/shop.example.com/verify", "", false, 401, "unauthenticated"},
+		{"verify unknown name", domains.ErrNotFound, "POST", "/v1/projects/p1/domains/nope.example.com/verify", "", true, 404, "not_found"},
+		{"connect", nil, "GET", "/v1/projects/p1/domains/shop.example.com/connect", "", true, 200, `"provider":"cloudflare"`},
+		{"connect not available", domains.ErrNoAutoSetup, "GET", "/v1/projects/p1/domains/shop.example.com/connect", "", true, 404, "no_auto_setup"},
 		{"add rejects unknown fields", nil, "POST", "/v1/projects/p1/domains", `{"hostname":"x.example.com","id":"y"}`, true, 400, "invalid_json"},
 		{"invalid hostname", &domains.InvalidError{Reason: "use a name, not an IP address"}, "POST", "/v1/projects/p1/domains", `{"hostname":"1.2.3.4"}`, true, 400, "invalid_hostname"},
 		{"reserved", domains.ErrReserved, "POST", "/v1/projects/p1/domains", `{"hostname":"x.greyshipapp.tech"}`, true, 400, "reserved_hostname"},

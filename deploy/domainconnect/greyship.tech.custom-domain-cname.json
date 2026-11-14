@@ -1,0 +1,19 @@
+{
+  "providerId": "greyship.tech",
+  "providerName": "Greyship",
+  "serviceId": "custom-domain-cname",
+  "serviceName": "Greyship custom domain",
+  "version": 1,
+  "logoUrl": "https://greyship.tech/icon.svg",
+  "description": "Points a subdomain at an app running on a Greyship server.",
+  "variableDescription": "host is the subdomain to create, target is the app's default Greyship address",
+  "hostRequired": true,
+  "records": [
+    {
+      "type": "CNAME",
+      "host": "%host%",
+      "pointsTo": "%target%",
+      "ttl": 3600
+    }
+  ]
+}

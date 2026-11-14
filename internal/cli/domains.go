@@ -1,18 +1,49 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 )
 
+type domainRecord struct {
+	Type  string `json:"type"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 type domainEntry struct {
-	Hostname string `json:"hostname"`
-	Service  string `json:"service"`
-	Custom   bool   `json:"custom"`
-	DNS      string `json:"dns"`
+	Hostname string         `json:"hostname"`
+	Service  string         `json:"service"`
+	Custom   bool           `json:"custom"`
+	DNS      string         `json:"dns"`
+	Records  []domainRecord `json:"records"`
+}
+
+const (
+	domainWaitEvery = 5 * time.Second
+	domainWaitFor   = 10 * time.Minute
+)
+
+func printRecords(a *App, d domainEntry) {
+	if len(d.Records) == 0 {
+		return
+	}
+	fmt.Fprintln(a.Out, "Create this DNS record at your DNS provider:")
+	tw := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(tw, "  TYPE\tNAME\tVALUE\t")
+	for _, r := range d.Records {
+		value := r.Value
+		if value == "" {
+			value = "(this server's IP address)"
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t\n", r.Type, r.Name, value)
+	}
+	_ = tw.Flush()
 }
 
 var dnsText = map[string]string{
@@ -86,7 +117,8 @@ func domainsCmd(a *App, asJSON *bool) *cobra.Command {
 			}
 			fmt.Fprintf(a.Out, "✓ %s now serves %s (DNS: %s).\n", out.Domain.Hostname, out.Domain.Service, dnsText[out.Domain.DNS])
 			if out.Domain.DNS != "pointing" {
-				fmt.Fprintf(a.Out, "Point it at this service: add a CNAME from %s to the service's default address (see grey domains).\n", out.Domain.Hostname)
+				printRecords(a, out.Domain)
+				fmt.Fprintf(a.Out, "Then run: grey domains verify %s --wait\n", out.Domain.Hostname)
 			}
 			return nil
 		},
@@ -116,6 +148,77 @@ func domainsCmd(a *App, asJSON *bool) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(add, remove)
+	var wait bool
+	verify := &cobra.Command{
+		Use:   "verify <hostname>",
+		Short: "Check a custom domain's DNS again",
+		Long: "Looks up the domain's DNS record and says whether it points at this Greyship. With --wait it keeps checking " +
+			"until it does (up to 10 minutes), like the dashboard. The first time it points here, HTTPS is prepared for it.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			l, _, err := a.linkedProject()
+			if err != nil {
+				return err
+			}
+			s, err := a.session()
+			if err != nil {
+				return err
+			}
+			path := "/v1/projects/" + url.PathEscape(l.ID) + "/domains/" + url.PathEscape(args[0]) + "/verify"
+			deadline := time.Now().Add(domainWaitFor)
+			for {
+				var out struct{ Domain domainEntry }
+				if err := s.api.do(cmd.Context(), "POST", path, nil, &out); err != nil {
+					return friendly(err)
+				}
+				if out.Domain.DNS == "pointing" || !wait || time.Now().After(deadline) {
+					if *asJSON {
+						return a.printJSON(out.Domain)
+					}
+					fmt.Fprintf(a.Out, "%s: %s\n", out.Domain.Hostname, dnsText[out.Domain.DNS])
+					if out.Domain.DNS != "pointing" {
+						printRecords(a, out.Domain)
+					}
+					return nil
+				}
+				if err := a.Sleep(cmd.Context(), domainWaitEvery); err != nil {
+					return err
+				}
+			}
+		},
+	}
+	verify.Flags().BoolVar(&wait, "wait", false, "keep checking until the domain points here")
+	connect := &cobra.Command{
+		Use:   "connect <hostname>",
+		Short: "Print a link that adds the DNS record for you, when your DNS provider supports it",
+		Long: "For a domain on Cloudflare, prints a link that opens Cloudflare and adds the record after you approve it. " +
+			"Not every domain can do this; then add the record from grey domains add by hand.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			l, _, err := a.linkedProject()
+			if err != nil {
+				return err
+			}
+			s, err := a.session()
+			if err != nil {
+				return err
+			}
+			var out struct{ Provider, URL string }
+			err = s.api.do(cmd.Context(), "GET", "/v1/projects/"+url.PathEscape(l.ID)+"/domains/"+url.PathEscape(args[0])+"/connect", nil, &out)
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && apiErr.Code == "no_auto_setup" {
+				return fmt.Errorf("%s can't be set up in one click; create the record by hand (grey domains add shows it)", args[0])
+			}
+			if err != nil {
+				return friendly(err)
+			}
+			if *asJSON {
+				return a.printJSON(out)
+			}
+			fmt.Fprintf(a.Out, "Open this link, sign in to %s and approve:\n%s\n", out.Provider, out.URL)
+			return nil
+		},
+	}
+	cmd.AddCommand(add, remove, verify, connect)
 	return cmd
 }

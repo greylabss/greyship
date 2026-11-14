@@ -11,7 +11,7 @@ export default function MaintenancePage() {
       title="The dashboard is down for planned maintenance."
       body="Your apps keep serving traffic and waking on requests. Deploys and settings changes resume when we're back."
       actions={
-        <a href="https://x.com/greyshipapp" className={buttonClass("secondary")}>
+        <a href="https://x.com/greylabss" className={buttonClass("secondary")}>
           Updates on X
         </a>
       }

@@ -1,0 +1,89 @@
+---
+title: Use the dashboard
+description: Everything you can do in the web dashboard, and the CLI command for each. Use either one, or both.
+---
+
+The dashboard and the `grey` CLI are two doors to the same Greyship. Anything you do in one shows up in the other, and
+neither is required: you can run everything from the web, from the terminal, or switch between them. This page is the
+web side; the [CLI reference](/cli) is the terminal side.
+
+Your Greyship's dashboard is at its address: **app.greyship.tech** for the beta, or the address of the Greyship you
+installed.
+
+## Sign in
+
+Enter your email and password. There is no signup and no email code: the person who runs the Greyship made your
+account. Change your password under **Settings → Password**. If you forget it, ask them (or, if you run it, see
+[Self-hosting](/self-hosting#forgot-a-password)).
+
+On a brand-new Greyship nobody has an account yet: the first visit shows **Create the owner account**.
+
+## Deploy your first project
+
+Open **New project**. You have three ways to start:
+
+1. **Import from GitHub.** Press **Create GitHub App** once (it takes one click and a confirmation on GitHub), install
+   the app on the repositories you want, then pick one. Every push to its branch deploys. See
+   [Deploy from GitHub](/github).
+2. **Paste a public repository's link** (`https://github.com/owner/repo`). No GitHub App needed; update it with
+   **Deploy latest**.
+3. **Use your terminal.** `grey deploy` in a Go project creates the project and deploys it ([Quickstart](/quickstart)).
+
+Before anything deploys, the dashboard shows what it found: every service, its type and why, and the release command.
+Set the environment variables there, then press **Deploy** and watch the live build log.
+
+## Your projects
+
+The **Projects** page lists everything in your team. Open a project to see:
+
+| Page | What it does |
+| --- | --- |
+| **Overview** | Its services, their state (running, sleeping, starting) and URLs, and the latest deployment. |
+| **Deployments** | Every deploy with its status and build log. **Redeploy** the live one, or **Roll back** to an earlier one, with no rebuild ([Rollbacks](/rollbacks)). |
+| **Logs** | What your app prints, live, per service ([Logs](/logs)). |
+| **Env** | Add, change or remove variables, or paste a whole `.env` file. Values are never shown again ([Environment variables](/environment-variables)). |
+| **Domains** | Each web service's address, and your own domains with a DNS check ([Domains](/domains)). |
+| **Settings** | Rename the project, or delete it (you type its name to confirm). |
+
+Metrics and the Go runtime pages are planned and say so; they show no made-up numbers.
+
+## Usage and limits
+
+**Usage** shows what your running apps use now next to the limits your admin set for you (memory, CPU, builds at once).
+A deploy that would pass a limit fails with a message saying which, and the live version keeps running. See
+[Limits](/limits). Server builds run one at a time, so a deploy may wait for someone else's build; the log says how many
+are ahead.
+
+## Your account
+
+Under **Settings**:
+
+- **Notifications:** the bell, email and browser push for deploys you start ([Notifications](/notifications)).
+- **Password.**
+- **GitHub:** your own GitHub App, and removing it.
+- **API tokens:** the tokens `grey login` and CI use; revoke any you don't recognise.
+
+## If you run the Greyship: Admin
+
+The owner and any admin also see **Admin**:
+
+- **Users:** add people with an email and a password (or [many at once](/self-hosting#adding-people)), give each limits,
+  reset a password, make someone an admin.
+- **Overview and deployments:** find any deployment by id or project and read its full log.
+- **Email:** turn on deploy emails with a Resend key and a verified domain.
+
+## The same thing in the terminal
+
+| To… | In the dashboard | With the CLI |
+| --- | --- | --- |
+| Sign in | email and password | `grey server <address>` once, then `grey login` |
+| Create a project | New project | `grey init` or `grey deploy` |
+| Deploy | Import, or **Deploy latest** | `grey deploy` (or `grey github deploy`) |
+| Watch logs | Logs | `grey logs -f` |
+| Set variables | Env | `grey env set KEY=VALUE`, `grey env push`, `grey env pull` |
+| Redeploy or roll back | Deployments | `grey redeploy`, `grey rollback` |
+| Add a domain | Domains | `grey domains add <hostname>` |
+| Rename a project | Settings | dashboard only |
+| Delete a project | Settings | `grey projects delete <slug>` |
+| Notifications | Settings | `grey notifications` |
+| Add users, set limits | Admin | dashboard only |
